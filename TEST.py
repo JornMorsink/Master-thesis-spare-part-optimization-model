@@ -1,0 +1,1 @@
+print("hallo wereld, wereld, de wereld ik hou van jou")
