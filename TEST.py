@@ -1,1 +1,5 @@
-print("hallo wereld, wereld, de wereld ik hou van jou")
+import streamlit as st
+
+st.title("Test Dashboard")
+
+st.write("If you can see this, Streamlit works.")
