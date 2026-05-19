@@ -1,3 +1,4 @@
+from scipy.stats import poisson
 import pandas as pd
 import numpy as np
 import math
@@ -23,32 +24,33 @@ def run_metric_model(df_data):
 #2. LOAD INPUT DATA
 #-------------------------------------------------------------------
 
-    #Read spare part master data:
-    #    - part number
-    #    - unit cost ci
-    #    - criticality score CSi
-    #    - criticality weight wci
+#Read spare part master data:
+    cost_df = df_data["Total inventory costs"]
 
-    #Read location data:
-    #    - depot location
-    #    - regional hub locations
-
-    #Load right sheet:
+#Load right sheet:
     demand_df = df_data["Total inventory costs"]
 
-    #Read transportation data:
-    #    - shipment lead time Oj
-    #    - replenishment lead time
+#demad fractions for locations j
+    f_j = {
+        0: 1,               #this is VSM
+        1: 0.1111,          #this is virtual hub in Rijssen
+        2: 0.7991,          #this is VUSA
+        3: 0.0556,          #this is the regional hub in UK
+        4: 0.0342           #this is the regional hub in UAE
+    }
 
-    #Read emergency shipment data:
+#Transportation lead time data:
+    O_j = {
+        0: 0.0038,
+        1: 0.0027,          #this is virtual hub in Rijssen
+        2: 0.1346,          #this is VUSA
+        3: 0.0110,          #this is the regional hub in UK
+        4: 0.1346           #this is the regional hub in UAE
+    }
+
+#Read emergency shipment data:
     #    - emergency shipment cost cemj
     #    - emergency shipment fraction θij
-
-    #Read budget constraint:
-    #    - total budget C
-
-    #Read initial stock levels:
-    #    - sij
 
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
@@ -96,32 +98,75 @@ def run_metric_model(df_data):
         i = row["Material description"]
         lambda_part[i] = row["# of occurances in sales data"]
 
-    # ---------------------------------------------------
-    # DEMAND FRACTIONS PER HUB (fj)
-    # ---------------------------------------------------
-
-    f_j = {
-        0: 1,
-        1: 0.1111,
-        2: 0.7991,
-        3: 0.0556,
-        4: 0.0342
-    }
-
-
-    # ---------------------------------------------------
-    # DEMAND PER HUB (λij)
-    # ---------------------------------------------------
-
+    #make lambda for each part and location
     lambda_ij = {}
 
+    #loop over all the parts
     for i in lambda_part:
-
+        #loop over all the locations
         for j in L:
-
+            
+            #cacluate the demand per location and per part
             lambda_ij[(i, j)] = math.ceil(lambda_part[i] * f_j[j])
 
 
+#Assigning costs to the parts:
+    
+    #cost parameter
+    cost_part = {}
+
+    #for loop looping over all indivdual parts
+    for _, row in cost_df.iterrows():
+
+        #going over all the materials and assigning the cost to the right part
+        i = row["Material description"]
+        cost_part[i] = row["Purchase price"] / row["Purchase price per"]
+
+
+#-------------------------------------------------------------------
+#5. INITIALIZE INVENTORY LEVELS
+#-------------------------------------------------------------------
+
+#Initializing the inventory levels and setting them to zero
+    
+    #making the stock level parameter
+    s_ij = {}
+    
+    #looping over all the parts and locations that exist
+    for (i, j) in lambda_ij.keys():
+
+        #setting stock to zero
+        s_ij[i, j] = 0
+
+
+#Initialize costs and EBO:
+    
+    #setting the total inventory costs equal to the budget maximum
+    Total_inventory_Cost = C
+    
+#calculate the Expected Back Orders with zero stock
+    
+    #making the mu parameter which represents the demand during lead time
+    mu_i0 = {}
+    EBO_i0 = {}
+    
+    for i in P:
+        mu_i0[i] = lambda_ij[(i, 0)] * O_j[0]
+
+
+    def ebo_exact(mu, s):
+
+        if s == 0:
+            return mu
+
+        term1 = mu * (1 - poisson.cdf(s - 1, mu))
+        term2 = s * (1 - poisson.cdf(s, mu))
+
+        return term1 - term2
+
+
+    for i in P:
+        EBO_i0[i] = ebo_exact(mu_i0[i], 0)
     # ---------------------------------------------------
     # RESULTS
     # ---------------------------------------------------
@@ -130,25 +175,12 @@ def run_metric_model(df_data):
         "I": I,
         "J": J,
         "demand": lambda_part,
-        "lambda_ij": lambda_ij
+        "lambda_ij": lambda_ij,
+        "O_j": O_j,
+        "cost": cost_part,
+        "s_ij": s_ij,
+        "EBO_i0": EBO_i0
     }
-
-#-------------------------------------------------------------------
-#5. INITIALIZE INVENTORY LEVELS
-#-------------------------------------------------------------------
-
-#FOR each item i:
-#    FOR each location j:
-
-#        Initialize stock sij = 0
-
-#    END FOR
-#END FOR
-
-#Initialize:
-#    TotalCost = 0
-#    TotalEBO = very large number
-
 #-------------------------------------------------------------------
 #6. CALCULATE PIPELINE STOCK
 #-------------------------------------------------------------------
@@ -372,11 +404,5 @@ def run_metric_model(df_data):
 #    - expected backorders
 #    - inventory investment
 #    - criticality heatmaps
-
-#-------------------------------------------------------------------
-#15. END MODEL
-#-------------------------------------------------------------------
-
-#END METRIC_SPARE_PART_OPTIMIZATION_MODEL
 
     return results
