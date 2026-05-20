@@ -15,7 +15,7 @@ def run_metric_model(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 100000
+    C = 86000
     #holding cost rate
     h = 0.2 
 
@@ -159,7 +159,7 @@ def run_metric_model(df_data):
         term1 = mu * (1 - poisson.cdf(s - 1, mu))
         term2 = s * (1 - poisson.cdf(s, mu))
 
-        return term1 - term2
+        return max(0.0, term1 - term2)
 
 
     for i in P:
@@ -225,25 +225,14 @@ def run_metric_model(df_data):
 #-------------------------------------------------------------------
 
 #calculating the expected backorders reductions
-        #making a simple function that calculates the reduction
+    
+    #making a simple function that calculates the reduction
     def ebo_reduction(mu, s):
     
         return ebo_exact(mu, s) - ebo_exact(mu, s + 1)
-    
-    #making the parameter for the reduction
-    EBO_reduction = {}
-
-    #looping over all the disinct parts i
-    for i in P:
-
-        #looping over all the bases j
-        for j in L:
-
-            #calculate the reduction of backorders
-            EBO_reduction[(i, j)] = ebo_reduction(mu_ij[(i, j)], s_ij[(i, j)])
 
 #-------------------------------------------------------------------
-#9. CONSTRAINTS
+#8. CONSTRAINTS
 #-------------------------------------------------------------------
 
 #9.1 Non-negativity and integrality
@@ -274,12 +263,9 @@ def run_metric_model(df_data):
 
             TotalCost += s_ij[(i, j)] * cost_part[i]
 
-    #Constraint for budget
-    TotalCost <= C
-
 
 #-------------------------------------------------------------------
-#10. OPTIMIZATION PROCEDURE
+#9. OPTIMIZATION PROCEDURE
 #-------------------------------------------------------------------
 
 #Calculating the optimization of spare parts til budget is exhausted
@@ -329,9 +315,28 @@ def run_metric_model(df_data):
             s_ij[(best_i, best_j)]
         )
 
+# ---------------------------------------------------
+# FILL RATE (FINAL STATE)
+# ---------------------------------------------------
+
+    SupplyAvailability = {}
+
+    for i in P:
+
+        total_ebo = 0
+
+        for j in L:
+
+            if j == 0:
+                continue  # exclude depot
+
+            total_ebo += EBO_ij[(i, j)]
+
+
+        SupplyAvailability[i] = 1- total_ebo
 
 #-------------------------------------------------------------------
-#8. OBJECTIVE FUNCTION
+#10. OBJECTIVE FUNCTION
 #-------------------------------------------------------------------
 
     TotalEBO = 0
@@ -358,9 +363,10 @@ def run_metric_model(df_data):
         "EBO_i0": EBO_i0,
         "mu_ij": mu_ij,
         "EBO_ij": EBO_ij,
-        "EBO_reduction": EBO_reduction,
+        "EBO_reduction": DeltaEBO,
         "total": TotalEBO,
-        "TotalCost": TotalCost
+        "TotalCost": TotalCost,
+        "SupplyAvailability": SupplyAvailability,
     }
 
 

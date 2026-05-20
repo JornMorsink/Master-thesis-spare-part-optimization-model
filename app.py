@@ -72,6 +72,12 @@ if uploaded_file is not None:
         st.write(f"#### Lead time: {results['O_j']}")
         st.write(f"#### total backorders: {results['total']}")
         st.write(f"#### total costs: {results['TotalCost']}")
+
+        st.metric(
+            "Average Supply Availability",
+            f"{sum(results['SupplyAvailability'].values()) / len(results['SupplyAvailability']):.2%}"
+        )
+        
         st.write("#### Demand per hub")
 
         hub_df = pd.DataFrame(
@@ -92,4 +98,7 @@ if uploaded_file is not None:
 
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])
 
+        hub_df["availability"] = hub_df["Material"].map(results["SupplyAvailability"])
+
         st.dataframe(hub_df)
+
