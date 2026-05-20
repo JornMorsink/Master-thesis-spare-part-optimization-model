@@ -15,7 +15,7 @@ def run_metric_model(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 100000 
+    C = 100000
     #holding cost rate
     h = 0.2 
 
@@ -124,7 +124,7 @@ def run_metric_model(df_data):
 
 
 #-------------------------------------------------------------------
-#5. INITIALIZE INVENTORY LEVELS
+#5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
 #-------------------------------------------------------------------
 
 #Initializing the inventory levels and setting them to zero
@@ -132,17 +132,14 @@ def run_metric_model(df_data):
     #making the stock level parameter
     s_ij = {}
     
-    #looping over all the parts and locations that exist
-    for (i, j) in lambda_ij.keys():
+    #looping over all the disinct parts i
+    for i in P:
 
-        #setting stock to zero
-        s_ij[i, j] = 0
+        #looping over all the bases j
+        for j in L:
 
-
-#Initialize costs and EBO:
-    
-    #setting the total inventory costs equal to the budget maximum
-    Total_inventory_Cost = C
+            #setting stock to zero
+            s_ij[(i, j)] = 0
     
 #calculate the Expected Back Orders with zero stock
     
@@ -166,7 +163,186 @@ def run_metric_model(df_data):
 
 
     for i in P:
-        EBO_i0[i] = ebo_exact(mu_i0[i], 0)
+        EBO_i0[i] = ebo_exact(mu_i0[i], s_ij[(i, 0)])
+
+
+#-------------------------------------------------------------------
+#6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
+#-------------------------------------------------------------------
+
+#calculating the pipeline for the bases j
+
+    #making the parameter for the pipeline
+    mu_ij = {}
+
+    #looping over all the disinct parts i
+    for i in P:
+
+        #looping over all the bases j
+        for j in L:
+
+            #pipeline for the depot is equal to demand times lead time
+            if j == 0:
+
+                mu_ij[(i, j)] = mu_i0[i]
+            
+            #pipeline for the bases is different calculation
+            else: 
+
+                #if demand is zero, pipeline is also zero
+                if lambda_ij[(i, 0)] == 0:
+                    
+                    mu_ij[(i, j)] = 0
+
+                #if the demand is not zero, there is possibility of pipeline stock
+                else:
+
+                    mu_ij[(i, j)] = (lambda_ij[(i, j)] * O_j[j]) + ((lambda_ij[(i, j)] * EBO_i0[i]) / lambda_ij[(i, 0)])
+
+#calculating the expected backorders for the bases j with the pipeline
+
+    #making the parameter for the bases
+    EBO_ij = {}
+
+    #looping over all the disinct parts i
+    for i in P:
+
+        #looping over all the bases j
+        for j in L:
+
+            if j == 0:
+
+                EBO_ij[(i, j)] = EBO_i0[i]
+
+            else:
+
+                #this is that
+                EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
+
+
+#-------------------------------------------------------------------
+#7. CALCULATE EXPECTED BACKORDERS REDUCTION
+#-------------------------------------------------------------------
+
+#calculating the expected backorders reductions
+        #making a simple function that calculates the reduction
+    def ebo_reduction(mu, s):
+    
+        return ebo_exact(mu, s) - ebo_exact(mu, s + 1)
+    
+    #making the parameter for the reduction
+    EBO_reduction = {}
+
+    #looping over all the disinct parts i
+    for i in P:
+
+        #looping over all the bases j
+        for j in L:
+
+            #calculate the reduction of backorders
+            EBO_reduction[(i, j)] = ebo_reduction(mu_ij[(i, j)], s_ij[(i, j)])
+
+#-------------------------------------------------------------------
+#9. CONSTRAINTS
+#-------------------------------------------------------------------
+
+#9.1 Non-negativity and integrality
+
+    #looping over all the disinct parts i
+    for i in P:
+
+        #looping over all the bases j
+        for j in L:
+
+            # ensure integer
+            s_ij[(i, j)] = int(s_ij[(i, j)])
+
+            # ensure non-negative
+            s_ij[(i, j)] = max(0, s_ij[(i, j)])
+
+
+#9.2 Budget constraint
+
+    #setting totalcost to zero
+    TotalCost = 0
+
+    #looping over all the distinct parts i
+    for i in P:
+
+        #looping over all the bases j
+        for j in L:
+
+            TotalCost += s_ij[(i, j)] * cost_part[i]
+
+    #Constraint for budget
+    TotalCost <= C
+
+
+#-------------------------------------------------------------------
+#10. OPTIMIZATION PROCEDURE
+#-------------------------------------------------------------------
+
+#Calculating the optimization of spare parts til budget is exhausted
+
+    #define parameters for optimization
+    DeltaEBO = {}
+    Efficiency = {}
+
+    #WHILE budget not exhausted:
+    while True:
+
+        best_i = None
+        best_j = None
+        best_eff = -1
+        
+        #looping over all the distinct parts i
+        for i in P:
+
+            #looping over all the bases j
+            for j in L:            
+
+                #calculate the ebo reduction
+                DeltaEBO[(i, j)] = ebo_reduction(mu_ij[(i, j)], s_ij[(i, j)])
+
+                #calculate the efficiency:
+                Efficiency[(i, j)] = DeltaEBO[(i, j)] / cost_part[i]
+
+                if Efficiency[(i, j)] > best_eff:
+
+                    best_eff = Efficiency[(i, j)]
+                    best_i = i
+                    best_j = j
+
+        #stop if the costs goes over the budget
+        if TotalCost + cost_part[best_i] > C:
+            break
+
+        #Allocate one stock unit to the best place
+        s_ij[(best_i, best_j)] += 1
+
+        #update the totalcost with the part added
+        TotalCost += cost_part[best_i]
+
+        #calculate the backorders for the updated part
+        EBO_ij[(best_i, best_j)] = ebo_exact(
+            mu_ij[(best_i, best_j)],
+            s_ij[(best_i, best_j)]
+        )
+
+
+#-------------------------------------------------------------------
+#8. OBJECTIVE FUNCTION
+#-------------------------------------------------------------------
+
+    TotalEBO = 0
+
+    for i in P:
+
+        for j in L:
+
+            TotalEBO += EBO_ij[(i, j)]
+
+
     # ---------------------------------------------------
     # RESULTS
     # ---------------------------------------------------
@@ -179,161 +355,14 @@ def run_metric_model(df_data):
         "O_j": O_j,
         "cost": cost_part,
         "s_ij": s_ij,
-        "EBO_i0": EBO_i0
+        "EBO_i0": EBO_i0,
+        "mu_ij": mu_ij,
+        "EBO_ij": EBO_ij,
+        "EBO_reduction": EBO_reduction,
+        "total": TotalEBO,
+        "TotalCost": TotalCost
     }
-#-------------------------------------------------------------------
-#6. CALCULATE PIPELINE STOCK
-#-------------------------------------------------------------------
 
-#FOR each item i:
-#    FOR each location j:
-
-#        Calculate pipeline mean:
-#            μij = λij × Oj
-
-#        Estimate pipeline quantity:
-#            Xj ~ Poisson(μij)
-
-#    END FOR
-#END FOR
-
-#-------------------------------------------------------------------
-#7. CALCULATE EXPECTED BACKORDERS
-#-------------------------------------------------------------------
-
-#FOR each item i:
-#    FOR each location j:
-
-#        Compute expected backorders:
-
-#        EBOij = Expected value of:
-#                 MAX(Xj - sij, 0)
-
-#        Calculate regular backorders:
-#            EBOregij
-
-#        Calculate emergency backorders:
-#            EBOemij
-
-#        Total backorders:
-#            EBOtotij = EBOregij + EBOemij
-
-#    END FOR
-#END FOR
-
-#-------------------------------------------------------------------
-#8. OBJECTIVE FUNCTION
-#-------------------------------------------------------------------
-
-#Objective:
-#    Minimize total expected backorders
-
-#MINIMIZE:
-
-#    TotalEBO =
-#    SUM over i
-#        SUM over j
-#            EBOij(sij)
-
-#Subject to:
-#    inventory constraints
-#    budget constraints
-#    integrality constraints
-
-#-------------------------------------------------------------------
-#9. CONSTRAINTS
-#-------------------------------------------------------------------
-
-#9.1 Non-negativity and integrality
-
-#FOR all i,j:
-
-#    sij >= 0
-
-#    sij must be integer
-
-#END FOR
-
-#--------------------------------------------------
-
-#9.2 Budget constraint
-
-#TotalCost =
-#SUM over i:
-#    ci ×
-#    SUM over j:
-#        sij
-
-#Constraint:
-#    TotalCost <= C
-
-#--------------------------------------------------
-
-#9.3 Backorder consistency
-
-#FOR all i,j:
-
-#    EBOtotij =
-#        EBOregij +
-#        EBOemij
-
-#END FOR
-
-#--------------------------------------------------
-
-#9.4 Depot demand consistency
-
-#FOR each item i:
-
-#    mi0 =
-#    SUM over regional hubs j:
-#        mij
-
-#END FOR
-
-#-------------------------------------------------------------------
-#10. OPTIMIZATION PROCEDURE
-#-------------------------------------------------------------------
-
-#WHILE budget not exhausted:
-
-#    FOR each item i:
-#        FOR each location j:
-
-#            Temporarily increase stock:
-#                sij = sij + 1
-
-#            Recalculate:
-#                EBOij_new
-
-#            Compute marginal improvement:
-
-#                DeltaEBO =
-#                    EBO_old - EBO_new
-
-#            Compute marginal efficiency:
-
-#                Efficiency =
-#                    DeltaEBO / ci
-
-#            Store efficiency value
-
-#            Restore previous stock level
-
-#        END FOR
-#    END FOR
-
-#    Select item-location pair with:
-#        highest marginal efficiency
-
-#    Permanently allocate one spare part
-
-#    Update:
-#        stock levels
-#        total cost
-#        expected backorders
-
-#END WHILE
 
 #-------------------------------------------------------------------
 #11. EMERGENCY SHIPMENT LOGIC

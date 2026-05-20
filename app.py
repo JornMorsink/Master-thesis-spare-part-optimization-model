@@ -70,6 +70,8 @@ if uploaded_file is not None:
         st.write(f"#### Number of spare parts: {results['I']}")
         st.write(f"#### Number of locations: {results['J']}")
         st.write(f"#### Lead time: {results['O_j']}")
+        st.write(f"#### total backorders: {results['total']}")
+        st.write(f"#### total costs: {results['TotalCost']}")
         st.write("#### Demand per hub")
 
         hub_df = pd.DataFrame(
@@ -78,16 +80,16 @@ if uploaded_file is not None:
                     i,
                     j,
                     demand,
-                    results["s_ij"][(i, j)]
+                    results["s_ij"][(i, j)],
+                    results["mu_ij"].get((i, j), None),
+                    results["EBO_ij"][(i, j)],
+                    results["EBO_reduction"][(i, j)]
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
             ],
-            columns=["Material", "Hub", "Demand", "s_ij"]
+            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction"]
         )
 
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])
-
-        # ONLY DEPOT EBO (j=0)
-        hub_df["EBO (depot)"] = hub_df["Material"].map(results["EBO_i0"])
 
         st.dataframe(hub_df)
