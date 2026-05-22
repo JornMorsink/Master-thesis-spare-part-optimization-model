@@ -318,8 +318,7 @@ def run_metric_model(df_data):
 # ---------------------------------------------------
 # FILL RATE (FINAL STATE)
 # ---------------------------------------------------
-    TotalSupplyAvailability = 0
-    AvgSupplyAvailability = 0
+
     SupplyAvailability = {}
 
     for i in P:
@@ -335,9 +334,7 @@ def run_metric_model(df_data):
 
 
         SupplyAvailability[i] = 1 - total_ebo
-        TotalSupplyAvailability += SupplyAvailability
 
-    AvgSupplyAvailability = TotalSupplyAvailability / len(P)
 #-------------------------------------------------------------------
 #10. OBJECTIVE FUNCTION
 #-------------------------------------------------------------------
