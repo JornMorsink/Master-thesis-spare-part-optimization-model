@@ -71,7 +71,12 @@ if uploaded_file is not None:
         st.write(f"#### Number of locations: {results['J']}")
         st.write(f"#### Lead time: {results['O_j']}")
         st.write(f"#### total backorders: {results['total']}")
+        st.write(
+            f"#### Total emergency shipments: "
+            f"{sum(results['EmergencyShipments'].values()):.2f}"
+        )
         st.write(f"#### total costs: {results['TotalCost']}")
+        st.write(f"#### Grand total costs: {results['Grandtotalcost']}")
 
         st.metric(
             "Average Supply Availability",

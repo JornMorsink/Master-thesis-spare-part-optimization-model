@@ -335,6 +335,68 @@ def run_metric_model(df_data):
 
         SupplyAvailability[i] = 1 - total_ebo
 
+
+#-------------------------------------------------------------------
+#11. EMERGENCY SHIPMENT LOGIC
+#-------------------------------------------------------------------
+
+# Emergency shipment fraction
+    theta_ij = {}
+
+    # Emergency shipment cost
+    cem_ij = {}
+
+    for i in P:
+        for j in L:
+
+            if j == 0:
+                theta_ij[(i,j)] = 0
+                cem_ij[(i,j)] = 0
+
+            else:
+                theta_ij[(i,j)] = 0.7      # example: 70% emergency fulfilled
+                cem_ij[(i,j)] = 500        # example emergency shipment cost
+
+
+    # Effective backorders after emergency shipments
+    EffectiveEBO = {}
+
+    # Emergency shipment quantities
+    EmergencyShipments = {}
+
+    # Emergency shipment costs
+    EmergencyCost = {}
+
+    TotalEmergencyCost = 0
+
+    for i in P:
+
+        for j in L:
+
+            if j == 0:
+                EffectiveEBO[(i,0)] = EBO_ij[(i,0)]
+                continue
+
+            # amount handled via emergency shipment
+            EmergencyShipments[(i,j)] = (
+                theta_ij[(i,j)] * EBO_ij[(i,j)]
+            )
+
+            # remaining true backorders
+            EffectiveEBO[(i,j)] = (
+                (1 - theta_ij[(i,j)]) * EBO_ij[(i,j)]
+            )
+
+            # emergency shipment cost
+            EmergencyCost[(i,j)] = (
+                cem_ij[(i,j)] * EmergencyShipments[(i,j)]
+            )
+
+            TotalEmergencyCost += EmergencyCost[(i,j)]
+
+    #calculate the total costs
+    GrandTotalCost = TotalCost + TotalEmergencyCost
+
 #-------------------------------------------------------------------
 #10. OBJECTIVE FUNCTION
 #-------------------------------------------------------------------
@@ -345,7 +407,8 @@ def run_metric_model(df_data):
 
         for j in L:
 
-            TotalEBO += EBO_ij[(i, j)]
+
+            TotalEBO += EffectiveEBO[(i,j)]
 
 
     # ---------------------------------------------------
@@ -367,29 +430,9 @@ def run_metric_model(df_data):
         "total": TotalEBO,
         "TotalCost": TotalCost,
         "SupplyAvailability": SupplyAvailability,
+        "Grandtotalcost": GrandTotalCost,
+        "EmergencyShipments": EmergencyShipments,
     }
-
-
-#-------------------------------------------------------------------
-#11. EMERGENCY SHIPMENT LOGIC
-#-------------------------------------------------------------------
-
-#FOR each item i:
-#    FOR each location j:
-
-#        IF stockout occurs THEN
-
-#            Trigger emergency shipment
-
-#            Apply:
-#                emergency shipment cost cemj
-
-#           Reduce machine downtime
-
-#        END IF
-
-#    END FOR
-#END FOR
 
 #-------------------------------------------------------------------
 #12. CRITICALITY WEIGHTING
