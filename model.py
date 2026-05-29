@@ -15,7 +15,7 @@ def run_metric_model(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 86000
+    C = 100
     #holding cost rate
     h = 0.2 
 
@@ -33,19 +33,35 @@ def run_metric_model(df_data):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.1111,          #this is virtual hub in Rijssen
-        2: 0.7991,          #this is VUSA
-        3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342           #this is the regional hub in UAE
+        1: 0.25,          #this is virtual hub in Rijssen
+        2: 0.25,          #this is VUSA
+        3: 0.25,          #this is the regional hub in UK
+        4: 0.25           #this is the regional hub in UAE
     }
 
-#Transportation lead time data:
-    O_j = {
-        0: 0.0038,
-        1: 0.0027,          #this is virtual hub in Rijssen
-        2: 0.1346,          #this is VUSA
-        3: 0.0110,          #this is the regional hub in UK
-        4: 0.1346           #this is the regional hub in UAE
+    #Transportation lead time data: 
+    O_j = { 
+        0: 0.02531, 
+        1: 0.01, #this is virtual hub in Rijssen 
+        2: 0.01, #this is VUSA 
+        3: 0.01, #this is the regional hub in UK 
+        4: 0.01 #this is the regional hub in UAE 
+    } 
+
+    r_j = { 
+        0: 1, 
+        1: 0.2, 
+        2: 0.2, 
+        3: 0.2, 
+        4: 0.2, 
+    } 
+
+    T_j = { 
+        0: 1, 
+        1: 0.01, 
+        2: 0.01, 
+        3: 0.01, 
+        4: 0.01 
     }
 
 #Read emergency shipment data:
@@ -107,7 +123,7 @@ def run_metric_model(df_data):
         for j in L:
             
             #cacluate the demand per location and per part
-            lambda_ij[(i, j)] = math.ceil(lambda_part[i] * f_j[j])
+            lambda_ij[(i, j)] = lambda_part[i] * f_j[j]
 
 
 #Assigning costs to the parts:
@@ -139,6 +155,7 @@ def run_metric_model(df_data):
         for j in L:
 
             #setting stock to zero
+            s_ij[(i, 0)] = 2
             s_ij[(i, j)] = 0
     
 #calculate the Expected Back Orders with zero stock
@@ -172,52 +189,63 @@ def run_metric_model(df_data):
 
 #calculating the pipeline for the bases j
 
-    #making the parameter for the pipeline
-    mu_ij = {}
+    def compute_mu_ij():
 
-    #looping over all the disinct parts i
-    for i in P:
+        mu_ij = {}
+        EBO_i0_dynamic = {}
 
-        #looping over all the bases j
-        for j in L:
+        for i in P:
 
-            #pipeline for the depot is equal to demand times lead time
-            if j == 0:
+            # depot pipeline
+            mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_j[0]
 
-                mu_ij[(i, j)] = mu_i0[i]
-            
-            #pipeline for the bases is different calculation
-            else: 
+            # recompute depot EBO dynamically
+            EBO_i0_dynamic[i] = ebo_exact(
+                mu_ij[(i, 0)],
+                s_ij[(i, 0)]
+            )
 
-                #if demand is zero, pipeline is also zero
+            for j in L:
+
+                if j == 0:
+                    continue
+
                 if lambda_ij[(i, 0)] == 0:
-                    
+
                     mu_ij[(i, j)] = 0
 
-                #if the demand is not zero, there is possibility of pipeline stock
                 else:
 
-                    mu_ij[(i, j)] = (lambda_ij[(i, j)] * O_j[j]) + ((lambda_ij[(i, j)] * EBO_i0[i]) / lambda_ij[(i, 0)])
+                    waiting_time = (
+                        EBO_i0_dynamic[i] /
+                        lambda_ij[(i, 0)]
+                    )
+
+                    mu_ij[(i, j)] = lambda_ij[(i, j)] * (
+                        r_j[j] * T_j[j]
+                        + (1 - r_j[j]) * (
+                            O_j[j] + waiting_time
+                        )
+                    )
+
+        return mu_ij
 
 #calculating the expected backorders for the bases j with the pipeline
 
     #making the parameter for the bases
-    EBO_ij = {}
+    def compute_EBO(mu_ij):
 
-    #looping over all the disinct parts i
-    for i in P:
+        EBO_ij = {}
 
-        #looping over all the bases j
-        for j in L:
+        for i in P:
+            for j in L:
 
-            if j == 0:
+                if j == 0:
+                    EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
+                else:
+                    EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
 
-                EBO_ij[(i, j)] = EBO_i0[i]
-
-            else:
-
-                #this is that
-                EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
+        return EBO_ij
 
 
 #-------------------------------------------------------------------
@@ -228,8 +256,13 @@ def run_metric_model(df_data):
     
     #making a simple function that calculates the reduction
     def ebo_reduction(mu, s):
-    
-        return ebo_exact(mu, s) - ebo_exact(mu, s + 1)
+
+        reduction = (
+            ebo_exact(mu, s)
+            - ebo_exact(mu, s + 1)
+        )
+
+        return max(0.0, reduction)
 
 #-------------------------------------------------------------------
 #8. CONSTRAINTS
@@ -277,6 +310,9 @@ def run_metric_model(df_data):
     #WHILE budget not exhausted:
     while True:
 
+        mu_ij = compute_mu_ij()
+        EBO_ij = compute_EBO(mu_ij)
+        
         best_i = None
         best_j = None
         best_eff = -1
@@ -337,67 +373,6 @@ def run_metric_model(df_data):
 
 
 #-------------------------------------------------------------------
-#11. EMERGENCY SHIPMENT LOGIC
-#-------------------------------------------------------------------
-
-# Emergency shipment fraction
-    theta_ij = {}
-
-    # Emergency shipment cost
-    cem_ij = {}
-
-    for i in P:
-        for j in L:
-
-            if j == 0:
-                theta_ij[(i,j)] = 0
-                cem_ij[(i,j)] = 0
-
-            else:
-                theta_ij[(i,j)] = 0.7      # example: 70% emergency fulfilled
-                cem_ij[(i,j)] = 500        # example emergency shipment cost
-
-
-    # Effective backorders after emergency shipments
-    EffectiveEBO = {}
-
-    # Emergency shipment quantities
-    EmergencyShipments = {}
-
-    # Emergency shipment costs
-    EmergencyCost = {}
-
-    TotalEmergencyCost = 0
-
-    for i in P:
-
-        for j in L:
-
-            if j == 0:
-                EffectiveEBO[(i,0)] = EBO_ij[(i,0)]
-                continue
-
-            # amount handled via emergency shipment
-            EmergencyShipments[(i,j)] = (
-                theta_ij[(i,j)] * EBO_ij[(i,j)]
-            )
-
-            # remaining true backorders
-            EffectiveEBO[(i,j)] = (
-                (1 - theta_ij[(i,j)]) * EBO_ij[(i,j)]
-            )
-
-            # emergency shipment cost
-            EmergencyCost[(i,j)] = (
-                cem_ij[(i,j)] * EmergencyShipments[(i,j)]
-            )
-
-            TotalEmergencyCost += EmergencyCost[(i,j)]
-
-    #calculate the total costs
-    GrandTotalCost = TotalCost + TotalEmergencyCost
-
-#-------------------------------------------------------------------
 #10. OBJECTIVE FUNCTION
 #-------------------------------------------------------------------
 
@@ -408,7 +383,7 @@ def run_metric_model(df_data):
         for j in L:
 
 
-            TotalEBO += EffectiveEBO[(i,j)]
+            TotalEBO += EBO_ij[(i,j)]
 
 
     # ---------------------------------------------------
@@ -430,8 +405,6 @@ def run_metric_model(df_data):
         "total": TotalEBO,
         "TotalCost": TotalCost,
         "SupplyAvailability": SupplyAvailability,
-        "Grandtotalcost": GrandTotalCost,
-        "EmergencyShipments": EmergencyShipments,
     }
 
 #-------------------------------------------------------------------
