@@ -155,7 +155,7 @@ def run_metric_model(df_data):
         for j in L:
 
             #setting stock to zero
-            s_ij[(i, 0)] = 2
+            s_ij[(i, 0)] = 1
             s_ij[(i, j)] = 0
     
 #calculate the Expected Back Orders with zero stock
