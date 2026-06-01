@@ -15,7 +15,7 @@ def run_metric_model(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 100
+    C = 1600
     #holding cost rate
     h = 0.2 
 
@@ -155,7 +155,6 @@ def run_metric_model(df_data):
         for j in L:
 
             #setting stock to zero
-            s_ij[(i, 0)] = 1
             s_ij[(i, j)] = 0
     
 #calculate the Expected Back Orders with zero stock
@@ -264,38 +263,6 @@ def run_metric_model(df_data):
 
         return max(0.0, reduction)
 
-#-------------------------------------------------------------------
-#8. CONSTRAINTS
-#-------------------------------------------------------------------
-
-#9.1 Non-negativity and integrality
-
-    #looping over all the disinct parts i
-    for i in P:
-
-        #looping over all the bases j
-        for j in L:
-
-            # ensure integer
-            s_ij[(i, j)] = int(s_ij[(i, j)])
-
-            # ensure non-negative
-            s_ij[(i, j)] = max(0, s_ij[(i, j)])
-
-
-#9.2 Budget constraint
-
-    #setting totalcost to zero
-    TotalCost = 0
-
-    #looping over all the distinct parts i
-    for i in P:
-
-        #looping over all the bases j
-        for j in L:
-
-            TotalCost += s_ij[(i, j)] * cost_part[i]
-
 
 #-------------------------------------------------------------------
 #9. OPTIMIZATION PROCEDURE
@@ -306,6 +273,7 @@ def run_metric_model(df_data):
     #define parameters for optimization
     DeltaEBO = {}
     Efficiency = {}
+    TotalCost = 0
 
     #WHILE budget not exhausted:
     while True:
@@ -350,6 +318,10 @@ def run_metric_model(df_data):
             mu_ij[(best_i, best_j)],
             s_ij[(best_i, best_j)]
         )
+
+        mu_ij = compute_mu_ij()
+        EBO_ij = compute_EBO(mu_ij)
+
 
 # ---------------------------------------------------
 # FILL RATE (FINAL STATE)
