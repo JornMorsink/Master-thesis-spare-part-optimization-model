@@ -72,7 +72,7 @@ if uploaded_file is not None:
         st.write(f"#### Lead time: {results['O_j']}")
         st.write(f"#### total backorders: {results['total']}")
         st.write(f"#### total costs: {results['TotalCost']}")
-
+        
         st.metric(
             "Average Supply Availability",
             f"{sum(results['SupplyAvailability'].values()) / len(results['SupplyAvailability']):.2%}"

@@ -15,7 +15,7 @@ def run_metric_model(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 1600
+    C = 85000
     #holding cost rate
     h = 0.2 
 
@@ -33,40 +33,20 @@ def run_metric_model(df_data):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.25,          #this is virtual hub in Rijssen
-        2: 0.25,          #this is VUSA
-        3: 0.25,          #this is the regional hub in UK
-        4: 0.25           #this is the regional hub in UAE
+        1: 0.7991,          #this is virtual hub in Rijssen
+        2: 0.1111,          #this is VUSA
+        3: 0.0556,          #this is the regional hub in UK
+        4: 0.0342           #this is the regional hub in UAE
     }
 
     #Transportation lead time data: 
     O_j = { 
-        0: 0.02531, 
-        1: 0.01, #this is virtual hub in Rijssen 
-        2: 0.01, #this is VUSA 
-        3: 0.01, #this is the regional hub in UK 
-        4: 0.01 #this is the regional hub in UAE 
+        0: 0.0385, 
+        1: 0.0027, #this is virtual hub in Rijssen 
+        2: 0.1346, #this is VUSA 
+        3: 0.0110, #this is the regional hub in UK 
+        4: 0.1346 #this is the regional hub in UAE 
     } 
-
-    r_j = { 
-        0: 1, 
-        1: 0.2, 
-        2: 0.2, 
-        3: 0.2, 
-        4: 0.2, 
-    } 
-
-    T_j = { 
-        0: 1, 
-        1: 0.01, 
-        2: 0.01, 
-        3: 0.01, 
-        4: 0.01 
-    }
-
-#Read emergency shipment data:
-    #    - emergency shipment cost cemj
-    #    - emergency shipment fraction θij
 
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
@@ -156,6 +136,7 @@ def run_metric_model(df_data):
 
             #setting stock to zero
             s_ij[(i, j)] = 0
+
     
 #calculate the Expected Back Orders with zero stock
     
@@ -221,10 +202,7 @@ def run_metric_model(df_data):
                     )
 
                     mu_ij[(i, j)] = lambda_ij[(i, j)] * (
-                        r_j[j] * T_j[j]
-                        + (1 - r_j[j]) * (
                             O_j[j] + waiting_time
-                        )
                     )
 
         return mu_ij
@@ -239,10 +217,7 @@ def run_metric_model(df_data):
         for i in P:
             for j in L:
 
-                if j == 0:
-                    EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
-                else:
-                    EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
+                EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
 
         return EBO_ij
 
