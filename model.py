@@ -16,9 +16,6 @@ def run_metric_model(df_data):
 
     #budget constraint
     C = 85000
-    #holding cost rate
-    h = 0.2 
-
 
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA
@@ -45,8 +42,24 @@ def run_metric_model(df_data):
         1: 0.0027, #this is virtual hub in Rijssen 
         2: 0.1346, #this is VUSA 
         3: 0.0110, #this is the regional hub in UK 
-        4: 0.1346 #this is the regional hub in UAE 
+        4: 0.1346  #this is the regional hub in UAE 
     } 
+
+    #Emergency shipment lead time data:
+    E_j = {
+        1: 0.0027,
+        2: 0.0027,
+        3: 0.0027,
+        4: 0.0027
+    }
+
+    #costs of emergency shipment
+    c_em = {
+        1: 0, #this is virtual hub in Rijssen
+        2: 1500, #this is VUSA
+        3: 500, #this is the regional hub in UK
+        4: 2500  #this is the regional hub in UAE 
+}
 
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
@@ -167,23 +180,32 @@ def run_metric_model(df_data):
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
 #-------------------------------------------------------------------
 
-#calculating the pipeline for the bases j
-
+    #calculating the pipeline
     def compute_mu_ij():
 
         mu_ij = {}
+        theta_ij = {}
         EBO_i0_dynamic = {}
 
         for i in P:
 
-            # depot pipeline
+            # --------------------------
+            # DEPOT PIPELINE
+            # --------------------------
             mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_j[0]
 
-            # recompute depot EBO dynamically
             EBO_i0_dynamic[i] = ebo_exact(
                 mu_ij[(i, 0)],
                 s_ij[(i, 0)]
             )
+
+            if lambda_ij[(i, 0)] > 0:
+                depot_fill_rate = max(
+                    0,
+                    1 - EBO_i0_dynamic[i] / lambda_ij[(i, 0)]
+                )
+            else:
+                depot_fill_rate = 0
 
             for j in L:
 
@@ -191,21 +213,50 @@ def run_metric_model(df_data):
                     continue
 
                 if lambda_ij[(i, 0)] == 0:
-
                     mu_ij[(i, j)] = 0
+                    theta_ij[(i, j)] = 0
+                    continue
 
-                else:
+                # --------------------------
+                # REGULAR LEAD TIME
+                # --------------------------
+                waiting_time = EBO_i0_dynamic[i] / lambda_ij[(i, 0)]
 
-                    waiting_time = (
-                        EBO_i0_dynamic[i] /
-                        lambda_ij[(i, 0)]
-                    )
+                regular_lead_time = O_j[j] + waiting_time
 
-                    mu_ij[(i, j)] = lambda_ij[(i, j)] * (
-                            O_j[j] + waiting_time
-                    )
+                mu_regular = lambda_ij[(i, j)] * regular_lead_time
 
-        return mu_ij
+                # --------------------------
+                # STOCKOUT PROBABILITY
+                # --------------------------
+                base_stockout_prob = 1 - poisson.cdf(
+                    s_ij[(i, j)],
+                    mu_regular
+                )
+
+                # --------------------------
+                # EMERGENCY FRACTION (OZKAN θ)
+                # --------------------------
+                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate
+
+                # --------------------------
+                # SPLIT DEMAND FLOWS
+                # --------------------------
+                lambda_em = theta_ij[(i, j)] * lambda_ij[(i, j)]
+                lambda_reg = (1 - theta_ij[(i, j)]) * lambda_ij[(i, j)]
+
+                # --------------------------
+                # SEPARATE PIPELINES
+                # --------------------------
+                mu_em = lambda_em * E_j[j]
+                mu_reg = lambda_reg * regular_lead_time
+
+                # --------------------------
+                # TOTAL EFFECTIVE PIPELINE
+                # --------------------------
+                mu_ij[(i, j)] = mu_em + mu_reg
+
+        return mu_ij, theta_ij
 
 #calculating the expected backorders for the bases j with the pipeline
 
@@ -253,7 +304,7 @@ def run_metric_model(df_data):
     #WHILE budget not exhausted:
     while True:
 
-        mu_ij = compute_mu_ij()
+        mu_ij, theta_ij = compute_mu_ij()
         EBO_ij = compute_EBO(mu_ij)
         
         best_i = None
@@ -294,9 +345,8 @@ def run_metric_model(df_data):
             s_ij[(best_i, best_j)]
         )
 
-        mu_ij = compute_mu_ij()
+        mu_ij, theta_ij = compute_mu_ij()
         EBO_ij = compute_EBO(mu_ij)
-
 
 # ---------------------------------------------------
 # FILL RATE (FINAL STATE)
@@ -333,6 +383,20 @@ def run_metric_model(df_data):
             TotalEBO += EBO_ij[(i,j)]
 
 
+    TotalEmergencyCost = 0
+
+    for i in P:
+        for j in L:
+
+            if j == 0:
+                continue
+
+            TotalEmergencyCost += (
+                theta_ij[(i,j)]
+                * lambda_ij[(i,j)]
+                * c_em[j]
+            )
+
     # ---------------------------------------------------
     # RESULTS
     # ---------------------------------------------------
@@ -352,6 +416,8 @@ def run_metric_model(df_data):
         "total": TotalEBO,
         "TotalCost": TotalCost,
         "SupplyAvailability": SupplyAvailability,
+        "theta_ij": theta_ij,
+        "emergencycost": TotalEmergencyCost,
     }
 
     return results

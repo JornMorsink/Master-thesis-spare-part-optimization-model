@@ -72,7 +72,8 @@ if uploaded_file is not None:
         st.write(f"#### Lead time: {results['O_j']}")
         st.write(f"#### total backorders: {results['total']}")
         st.write(f"#### total costs: {results['TotalCost']}")
-        
+        st.write(f"#### total emergency costs: {results['emergencycost']}")
+
         st.metric(
             "Average Supply Availability",
             f"{sum(results['SupplyAvailability'].values()) / len(results['SupplyAvailability']):.2%}"
@@ -89,11 +90,12 @@ if uploaded_file is not None:
                     results["s_ij"][(i, j)],
                     results["mu_ij"].get((i, j), None),
                     results["EBO_ij"][(i, j)],
-                    results["EBO_reduction"][(i, j)]
+                    results["EBO_reduction"][(i, j)],
+                    results["theta_ij"].get((i, j), None),
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
             ],
-            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction"]
+            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction", "theta_ij"]
         )
 
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])
