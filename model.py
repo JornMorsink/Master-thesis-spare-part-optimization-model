@@ -216,6 +216,29 @@ def run_metric_model(df_data):
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
 #-------------------------------------------------------------------
 
+    gamma_table = [
+        (0.00, 0.00),
+        (0.3068, 0.1198),
+        (0.6469, 0.2900),
+        (0.8885, 0.6220),
+        (0.9785, 0.8969),
+        (0.9975, 0.9869),
+        (1.0000, 1.0000)
+    ]
+
+    def gamma_from_fillrate(beta0):
+
+        for k in range(len(gamma_table)-1):
+
+            x1, y1 = gamma_table[k]
+            x2, y2 = gamma_table[k+1]
+
+            if x1 <= beta0 <= x2:
+
+                return y1 + (beta0 - x1) * (y2 - y1) / (x2 - x1)
+
+        return 1.0
+
     #calculating the pipeline
     def compute_mu_ij():
 
@@ -271,9 +294,10 @@ def run_metric_model(df_data):
                 )
 
                 # --------------------------
-                # EMERGENCY FRACTION (OZKAN θ)
+                # EMERGENCY FRACTION WITH SIMULATION-BASED CORRECTION
                 # --------------------------
-                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate
+                gamma = gamma_from_fillrate(depot_fill_rate)
+                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate * gamma
 
                 # --------------------------
                 # SPLIT DEMAND FLOWS
