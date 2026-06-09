@@ -1,4 +1,4 @@
-from scipy.stats import poisson, nbinom
+from scipy.stats import poisson
 import pandas as pd
 import numpy as np
 import math
@@ -43,18 +43,44 @@ def run_metric_model_vari(df_data):
         2: 0.1346, #this is VUSA 
         3: 0.0110, #this is the regional hub in UK 
         4: 0.1346  #this is the regional hub in UAE 
-    }
+    } 
 
-    # Lead time variance (YOU must calibrate these)
-    Var_O_j = {
-        0: 0.0027,
+    #Emergency shipment lead time data:
+    E_j = {
         1: 0.0027,
         2: 0.0027,
         3: 0.0027,
         4: 0.0027
     }
 
+    #costs of emergency shipment
+    c_em = {
+        1: 0, #this is virtual hub in Rijssen
+        2: 5, #this is VUSA
+        3: 5, #this is the regional hub in UK
+        4: 5  #this is the regional hub in UAE 
+    }
 
+    # Lead time variance (YOU must calibrate these)
+    Var_O_j = {
+        0: 0.0001,
+        1: 0.00005,
+        2: 0.0002,
+        3: 0.0001,
+        4: 0.0002
+    }
+
+    Var_E_j = {
+        1: 0.00002,
+        2: 0.00002,
+        3: 0.00002,
+        4: 0.00002
+    }
+
+    variance_factor = 1
+
+    Var_O_j = {j: variance_factor * value for j, value in Var_O_j.items()}
+    Var_E_j = {j: variance_factor * value for j, value in Var_E_j.items()}
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
 #-------------------------------------------------------------------
@@ -186,6 +212,26 @@ def run_metric_model_vari(df_data):
     for i in P:
         EBO_i0[i] = ebo_exact(mu_i0[i], s_ij[(i, 0)])
 
+
+    def ebo_vari_metric(mu, var, s):
+
+        if mu <= 0:
+            return 0.0
+
+        if var <= 0:
+            return ebo_exact(mu, s)
+
+        # Sherbrooke two-moment correction
+        m_prime = var / mu
+
+        # avoid numerical problems
+        if m_prime <= 0:
+            return ebo_exact(mu, s)
+
+        adjusted_mu = mu / m_prime
+
+        return max(0.0, m_prime * ebo_exact(adjusted_mu, s))
+
     # ---------------------------------------------------
     # VARI-METRIC: variance of depot backorders
     # ---------------------------------------------------
@@ -217,11 +263,34 @@ def run_metric_model_vari(df_data):
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
 #-------------------------------------------------------------------
 
+    gamma_table = [
+        (0.00, 0.00),
+        (0.3068, 0.1198),
+        (0.6469, 0.2900),
+        (0.8885, 0.6220),
+        (0.9785, 0.8969),
+        (0.9975, 0.9869),
+        (1.0000, 1.0000)
+    ]
+
+    def gamma_from_fillrate(beta0):
+
+        for k in range(len(gamma_table)-1):
+
+            x1, y1 = gamma_table[k]
+            x2, y2 = gamma_table[k+1]
+
+            if x1 <= beta0 <= x2:
+
+                return y1 + (beta0 - x1) * (y2 - y1) / (x2 - x1)
+
+        return 1.0
 
     #calculating the pipeline
     def compute_mu_ij():
 
         mu_ij = {}
+        theta_ij = {}
         var_ij = {}
         EBO_i0_dynamic = {}
 
@@ -238,7 +307,7 @@ def run_metric_model_vari(df_data):
                 O_j[0],
                 Var_O_j[0]
             )
-
+            
             EBO_i0_dynamic[i] = ebo_exact(
                 mu_ij[(i, 0)],
                 s_ij[(i, 0)]
@@ -249,6 +318,14 @@ def run_metric_model_vari(df_data):
                 s_ij[(i, 0)]
             )
             
+            if lambda_ij[(i, 0)] > 0:
+                depot_fill_rate = max(
+                    0,
+                    1 - EBO_i0_dynamic[i] / lambda_ij[(i, 0)]
+                )
+            else:
+                depot_fill_rate = 0
+
             for j in L:
 
                 if j == 0:
@@ -257,6 +334,7 @@ def run_metric_model_vari(df_data):
                 if lambda_ij[(i, 0)] == 0:
                     mu_ij[(i, j)] = 0
                     var_ij[(i, j)] = 0
+                    theta_ij[(i, j)] = 0
                     continue
 
                 # --------------------------
@@ -267,51 +345,59 @@ def run_metric_model_vari(df_data):
                 regular_lead_time = O_j[j] + waiting_time
 
                 # --------------------------
-                # VARI-METRIC PIPELINE MEAN
+                # STOCKOUT PROBABILITY
                 # --------------------------
-                mu_reg = lambda_ij[(i, j)] * regular_lead_time
+                mu_regular = lambda_ij[(i, j)] * regular_lead_time
 
-                mu_ij[(i, j)] = mu_reg
-
-                # --------------------------
-                # VARI-METRIC PIPELINE VARIANCE
-                # --------------------------
-                var_ij[(i, j)] = (
-                    lambda_ij[(i, j)] * O_j[j]
-                    + (lambda_ij[(i, j)] ** 2) * Var_O_j[j]
-                    + (1 - f_j[j]) * f_j[j] * EBO_i0_dynamic[i]
-                    + (f_j[j] ** 2) * V_BO_s0
+                base_stockout_prob = 1 - poisson.cdf(
+                    s_ij[(i, j)],
+                    mu_regular
                 )
 
-        return mu_ij, var_ij
+                # --------------------------
+                # EMERGENCY FRACTION WITH SIMULATION-BASED CORRECTION
+                # --------------------------
+                gamma = gamma_from_fillrate(depot_fill_rate)
+                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate * gamma
+
+                # --------------------------
+                # SPLIT DEMAND FLOWS
+                # --------------------------
+                lambda_em = theta_ij[(i, j)] * lambda_ij[(i, j)]
+                lambda_reg = (1 - theta_ij[(i, j)]) * lambda_ij[(i, j)]
+
+                # --------------------------
+                # SEPARATE PIPELINES
+                # --------------------------
+                mu_em = lambda_em * E_j[j]
+                mu_reg = lambda_reg * regular_lead_time
+
+                # --------------------------
+                # TOTAL EFFECTIVE PIPELINE
+                # --------------------------
+                mu_ij[(i, j)] = mu_em + mu_reg
+
+                var_reg = demand_var_during_leadtime(
+                    lambda_reg,
+                    lambda_reg,
+                    regular_lead_time,
+                    Var_O_j[j]
+                )
+
+                var_em = demand_var_during_leadtime(
+                    lambda_em,
+                    lambda_em,
+                    E_j[j],
+                    Var_E_j[j]
+                )
+
+                var_ij[(i, j)] = var_em + var_reg + (f_j[j] ** 2) * V_BO_s0
+
+        return mu_ij, var_ij, theta_ij
 
 #calculating the expected backorders for the bases j with the pipeline
 
     #making the parameter for the bases
-    def vari_metric_ebo(mu, var, s):
-
-        if mu <= 0:
-            return 0.0
-
-        # If variance is close to the mean, use Poisson
-        if var <= mu or abs(var - mu) < 1e-8:
-            return ebo_exact(mu, s)
-
-        # VARI-METRIC two-moment approximation:
-        # fit negative binomial distribution using mean and variance
-        p = mu / var
-        r = (mu ** 2) / (var - mu)
-
-        upper = int(mu + 10 * math.sqrt(var) + s + 20)
-
-        ebo = 0.0
-
-        for n in range(s + 1, upper + 1):
-            ebo += (n - s) * nbinom.pmf(n, r, p)
-
-        return max(0.0, ebo)
-
-
     def compute_EBO(mu_ij, var_ij):
 
         EBO_ij = {}
@@ -323,7 +409,7 @@ def run_metric_model_vari(df_data):
                 var = var_ij[(i, j)]
                 s = s_ij[(i, j)]
 
-                EBO_ij[(i, j)] = vari_metric_ebo(mu, var, s)
+                EBO_ij[(i, j)] = ebo_vari_metric(mu, var, s)
 
         return EBO_ij
 
@@ -332,15 +418,15 @@ def run_metric_model_vari(df_data):
 #7. CALCULATE EXPECTED BACKORDERS REDUCTION
 #-------------------------------------------------------------------
 
+
     #making a simple function that calculates the reduction
     def ebo_reduction(mu, var, s):
 
-        reduction = (
-            vari_metric_ebo(mu, var, s)
-            - vari_metric_ebo(mu, var, s + 1)
-        )
+        current = ebo_vari_metric(mu, var, s)
+        future = ebo_vari_metric(mu, var, s + 1)
 
-        return max(0.0, reduction)
+        return max(0.0, current - future)
+
 
 #-------------------------------------------------------------------
 #9. OPTIMIZATION PROCEDURE
@@ -356,7 +442,7 @@ def run_metric_model_vari(df_data):
     #WHILE budget not exhausted:
     while True:
 
-        mu_ij, var_ij = compute_mu_ij()
+        mu_ij, var_ij, theta_ij = compute_mu_ij()
         EBO_ij = compute_EBO(mu_ij, var_ij)
         
         best_i = None
@@ -391,13 +477,7 @@ def run_metric_model_vari(df_data):
         #update the totalcost with the part added
         TotalCost += cost_part[best_i]
 
-        #calculate the backorders for the updated part
-        EBO_ij[(best_i, best_j)] = ebo_exact(
-            mu_ij[(best_i, best_j)],
-            s_ij[(best_i, best_j)]
-        )
-
-        mu_ij, var_ij = compute_mu_ij()
+        mu_ij, var_ij, theta_ij = compute_mu_ij()
         EBO_ij = compute_EBO(mu_ij, var_ij)
 
 # ---------------------------------------------------
@@ -434,6 +514,21 @@ def run_metric_model_vari(df_data):
 
             TotalEBO += EBO_ij[(i,j)]
 
+
+    TotalEmergencyCost = 0
+
+    for i in P:
+        for j in L:
+
+            if j == 0:
+                continue
+
+            TotalEmergencyCost += (
+                theta_ij[(i,j)]
+                * lambda_ij[(i,j)]
+                * c_em[j]
+            )
+
     # ---------------------------------------------------
     # RESULTS
     # ---------------------------------------------------
@@ -453,6 +548,8 @@ def run_metric_model_vari(df_data):
         "total": TotalEBO,
         "TotalCost": TotalCost,
         "SupplyAvailability": SupplyAvailability,
+        "theta_ij": theta_ij,
+        "emergencycost": TotalEmergencyCost,
         "var_ij": var_ij,
     }
 

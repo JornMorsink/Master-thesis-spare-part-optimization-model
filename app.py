@@ -60,7 +60,7 @@ if uploaded_file is not None:
     if st.button("Run METRIC Calculation"):
 
         # Run calculations from separate file
-        results = run_metric_model(df_data)
+        results = run_metric_model_vari(df_data)
 
         # ---------------------------------------------------
         # SHOW RESULTS
@@ -92,12 +92,12 @@ if uploaded_file is not None:
                     results["mu_ij"].get((i, j), None),
                     results["EBO_ij"][(i, j)],
                     results["EBO_reduction"][(i, j)],
-                    #results["var_ij"][(i, j)],
+                    results["var_ij"][(i, j)],
                     results["theta_ij"].get((i, j), None),
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
             ],
-            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction", "theta_ij"]
+            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction", "theta_ij", "var_ij"]
         )
 
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])

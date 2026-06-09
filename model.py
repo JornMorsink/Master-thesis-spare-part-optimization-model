@@ -61,22 +61,6 @@ def run_metric_model(df_data):
         4: 5  #this is the regional hub in UAE 
     }
 
-    # Lead time variance (YOU must calibrate these)
-    Var_O_j = {
-        0: 0.0001,
-        1: 0.00005,
-        2: 0.0002,
-        3: 0.0001,
-        4: 0.0002
-    }
-
-    Var_E_j = {
-        1: 0.00002,
-        2: 0.00002,
-        3: 0.00002,
-        4: 0.00002
-    }
-
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
 #-------------------------------------------------------------------
@@ -132,28 +116,6 @@ def run_metric_model(df_data):
             
             #cacluate the demand per location and per part
             lambda_ij[(i, j)] = lambda_part[i] * f_j[j]
-
-    # ---------------------------------------------------
-    # VARI-METRIC: DEMAND VARIANCE
-    # ---------------------------------------------------
-
-    # Poisson assumption:
-    # Var(D) = E[D]
-    var_lambda_part = {}
-
-    for i in lambda_part:
-        var_lambda_part[i] = lambda_part[i]
-
-
-    def demand_var_during_leadtime(i, j, lead_time_mean, lead_time_var):
-
-        E_D = lambda_ij[(i, j)]
-        Var_D = var_lambda_part[i]
-
-        return (
-            lead_time_mean * Var_D
-            + (E_D ** 2) * lead_time_var
-        )
 
 #Assigning costs to the parts:
     
