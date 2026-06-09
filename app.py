@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 
 from model import run_metric_model
+from model_VARI import run_metric_model_vari
 
 # ---------------------------------------------------
 # PAGE TITLE
@@ -91,6 +92,7 @@ if uploaded_file is not None:
                     results["mu_ij"].get((i, j), None),
                     results["EBO_ij"][(i, j)],
                     results["EBO_reduction"][(i, j)],
+                    #results["var_ij"][(i, j)],
                     results["theta_ij"].get((i, j), None),
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
