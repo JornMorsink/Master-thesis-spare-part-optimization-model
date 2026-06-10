@@ -61,7 +61,7 @@ if uploaded_file is not None:
     if st.button("Run METRIC Calculation"):
 
         # Run calculations from separate file
-        results = run_metric_model_vari_solo(df_data)
+        results = run_metric_model_vari(df_data)
 
         # ---------------------------------------------------
         # SHOW RESULTS
@@ -74,7 +74,7 @@ if uploaded_file is not None:
         st.write(f"#### Lead time: {results['O_j']}")
         st.write(f"#### total backorders: {results['total']}")
         st.write(f"#### total costs: {results['TotalCost']}")
-        #st.write(f"#### total emergency costs: {results['emergencycost']}")
+        st.write(f"#### total emergency costs: {results['emergencycost']}")
 
         st.metric(
             "Average Supply Availability",
@@ -94,11 +94,12 @@ if uploaded_file is not None:
                     results["EBO_ij"][(i, j)],
                     results["EBO_reduction"][(i, j)],
                     results["var_ij"][(i, j)],
-                    #results["theta_ij"].get((i, j), None),
+                    results["theta_ij"].get((i, j), None),
+                    #results.get("V_BO_i0", {}).get(i, None) if int(j) == 0 else None,
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
             ],
-            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction", "var_ij"]
+            columns=["Material", "Hub", "Demand", "s_ij", "mu_ij", "EBO_ij", "reduction", "var_ij", "theta_ij"]
         )
 
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])

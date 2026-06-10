@@ -1,4 +1,4 @@
-from scipy.stats import poisson
+from scipy.stats import poisson, nbinom
 import pandas as pd
 import numpy as np
 import math
@@ -47,10 +47,10 @@ def run_metric_model_vari(df_data):
 
     #Emergency shipment lead time data:
     E_j = {
-        1: 0.0027,
-        2: 0.0027,
-        3: 0.0027,
-        4: 0.0027
+        1: 0.00274,
+        2: 0.01096,
+        3: 0.00274,
+        4: 0.01096
     }
 
     #costs of emergency shipment
@@ -218,19 +218,21 @@ def run_metric_model_vari(df_data):
         if mu <= 0:
             return 0.0
 
-        if var <= 0:
+        if var <= mu:
             return ebo_exact(mu, s)
 
-        # Sherbrooke two-moment correction
-        m_prime = var / mu
+        p = 1 - mu / var
+        r = mu ** 2 / (var - mu)
 
-        # avoid numerical problems
-        if m_prime <= 0:
-            return ebo_exact(mu, s)
+        F_s = nbinom.cdf(s, r, 1 - p)
+        F_s_minus_1 = nbinom.cdf(s - 1, r + 1, 1 - p)
 
-        adjusted_mu = mu / m_prime
+        ebo = (
+            r * p * (1 - F_s_minus_1) / (1 - p)
+            - s * (1 - F_s)
+        )
 
-        return max(0.0, m_prime * ebo_exact(adjusted_mu, s))
+        return max(0.0, ebo)
 
     # ---------------------------------------------------
     # VARI-METRIC: variance of depot backorders
@@ -308,8 +310,9 @@ def run_metric_model_vari(df_data):
                 Var_O_j[0]
             )
             
-            EBO_i0_dynamic[i] = ebo_exact(
+            EBO_i0_dynamic[i] = ebo_vari_metric(
                 mu_ij[(i, 0)],
+                var_ij[(i, 0)],
                 s_ij[(i, 0)]
             )
             
