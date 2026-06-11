@@ -15,7 +15,7 @@ def run_metric_model_vari(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 85000
+    C = 426000
 
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA
@@ -30,8 +30,8 @@ def run_metric_model_vari(df_data):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.7991,          #this is virtual hub in Rijssen
-        2: 0.1111,          #this is VUSA
+        1: 0.1111,          #this is virtual hub in Rijssen
+        2: 0.7991,          #this is VUSA
         3: 0.0556,          #this is the regional hub in UK
         4: 0.0342           #this is the regional hub in UAE
     }
@@ -63,10 +63,10 @@ def run_metric_model_vari(df_data):
 
     # Lead time variance (YOU must calibrate these)
     Var_O_j = {
-        0: 0.0001,
-        1: 0.00005,
+        0: 0.0002,
+        1: 0.0002,
         2: 0.0002,
-        3: 0.0001,
+        3: 0.0002,
         4: 0.0002
     }
 
@@ -106,7 +106,7 @@ def run_metric_model_vari(df_data):
 
     #define locations
     L = [0, 1, 2, 3, 4]
-
+  
     #number of locations
     J = len(L)
 
@@ -174,18 +174,37 @@ def run_metric_model_vari(df_data):
 #-------------------------------------------------------------------
 
 #Initializing the inventory levels and setting them to zero
-    
+    depot_stock = [
+        17, 21, 2, 2, 9, 4, 17, 37, 55, 26,
+        10, 14, 76, 22, 4, 11, 12, 19, 5, 55,
+        53, 50, 60, 83, 65, 1, 4, 12, 4, 54,
+        18, 24, 10, 27, 92, 101, 1, 19, 12, 18,
+        83, 45, 32, 22, 127, 62, 76, 56, 5, 43,
+        26, 5, 6, 12, 5, 9, 81, 10, 73, 6, 4
+    ]
+
+    base2_stock = [
+        3, 3, 2, 1, 20, 12, 0, 3, 7, 3,
+        0, 1, 11, 8, 12, 0, 4, 0, 2, 36,
+        65, 33, 60, 40, 7, 4, 8, 5, 8, 8,
+        17, 8, 4, 8, 79, 6, 33, 9, 9, 9,
+        7, 3, 2, 7, 5, 10, 9, 7, 5, 2,
+        3, 9, 5, 17, 7, 4, 28, 12, 7, 5,
+        4
+    ]
+
     #making the stock level parameter
     s_ij = {}
-    
-    #looping over all the disinct parts i
+
     for i in P:
-
-        #looping over all the bases j
         for j in L:
-
-            #setting stock to zero
             s_ij[(i, j)] = 0
+
+    #for i, stock in zip(P, depot_stock):
+    #    s_ij[(i, 0)] = stock
+
+    #for i, stock in zip(P, base2_stock):
+    #    s_ij[(i, 2)] = stock
 
     
 #calculate the Expected Back Orders with zero stock
@@ -504,6 +523,25 @@ def run_metric_model_vari(df_data):
         SupplyAvailability[i] = 1 - total_ebo
 
 
+    TotalEBO_bases = sum(
+        EBO_ij[(i, j)]
+        for i in P
+        for j in L
+        if j != 0
+    )
+
+    avg_theta = {}
+
+    for j in L:
+
+        if j == 0:
+            continue
+
+        avg_theta[j] = (
+            sum(theta_ij[(i, j)] for i in P)
+            / len(P)
+        )
+    
 #-------------------------------------------------------------------
 #10. OBJECTIVE FUNCTION
 #-------------------------------------------------------------------
@@ -554,6 +592,8 @@ def run_metric_model_vari(df_data):
         "theta_ij": theta_ij,
         "emergencycost": TotalEmergencyCost,
         "var_ij": var_ij,
+        "TotalEBO_bases": TotalEBO_bases,
+        "emergency": avg_theta,
     }
 
     return results

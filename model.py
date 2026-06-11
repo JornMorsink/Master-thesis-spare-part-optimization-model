@@ -15,7 +15,7 @@ def run_metric_model(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 85000
+    C = 86000
 
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA

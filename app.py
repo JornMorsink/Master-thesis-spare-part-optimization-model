@@ -75,6 +75,8 @@ if uploaded_file is not None:
         st.write(f"#### total backorders: {results['total']}")
         st.write(f"#### total costs: {results['TotalCost']}")
         st.write(f"#### total emergency costs: {results['emergencycost']}")
+        st.write(f"total EBO bases: {results['TotalEBO_bases']}")
+        st.write(f"average emergency: {results['emergency']}")
 
         st.metric(
             "Average Supply Availability",
