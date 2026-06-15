@@ -4,6 +4,7 @@ import pandas as pd
 from model import run_metric_model
 from model_VARI import run_metric_model_vari
 from model_VARI_solo import run_metric_model_vari_solo
+from model_VARI_new import run_metric_model_vari_new
 
 # ---------------------------------------------------
 # PAGE TITLE
@@ -61,7 +62,7 @@ if uploaded_file is not None:
     if st.button("Run METRIC Calculation"):
 
         # Run calculations from separate file
-        results = run_metric_model_vari(df_data)
+        results = run_metric_model_vari_new(df_data)
 
         # ---------------------------------------------------
         # SHOW RESULTS
@@ -107,6 +108,10 @@ if uploaded_file is not None:
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])
 
         hub_df["availability"] = hub_df["Material"].map(results["SupplyAvailability"])
+
+        hub_df["Group"] = hub_df["Material"].map(results["group_part"])
+
+        hub_df["Weight"] = hub_df["Material"].map(results["weight_part"])
 
         st.dataframe(hub_df)
 

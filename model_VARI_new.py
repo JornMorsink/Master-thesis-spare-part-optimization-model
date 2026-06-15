@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import math
 
-def run_metric_model_vari(df_data):
+def run_metric_model_vari_new(df_data):
 
 #-------------------------------------------------------------------
 #1. INITIALIZATION
@@ -30,10 +30,10 @@ def run_metric_model_vari(df_data):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.1111,          #this is virtual hub in Rijssen
+        1: 0.2009,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
-        3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342           #this is the regional hub in UAE
+        3: 0.0,          #this is the regional hub in UK
+        4: 0.0           #this is the regional hub in UAE
     }
 
     #Transportation lead time data: 
