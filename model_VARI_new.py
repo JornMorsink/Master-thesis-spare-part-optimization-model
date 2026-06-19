@@ -15,7 +15,7 @@ def run_metric_model_vari_new(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 0
+    C = 426000
 
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA
@@ -30,10 +30,10 @@ def run_metric_model_vari_new(df_data):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.2009,          #this is virtual hub in Rijssen
+        1: 0.1111,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
-        3: 0.0,          #this is the regional hub in UK
-        4: 0.0           #this is the regional hub in UAE
+        3: 0.0556,          #this is the regional hub in UK
+        4: 0.0342           #this is the regional hub in UAE
     }
 
     #Transportation lead time data: 
@@ -219,11 +219,11 @@ def run_metric_model_vari_new(df_data):
         for j in L:
             s_ij[(i, j)] = 0
 
-    for i, stock in zip(P, depot_stock):
-        s_ij[(i, 0)] = stock
+    #for i, stock in zip(P, depot_stock):
+    #    s_ij[(i, 0)] = stock
 
-    for i, stock in zip(P, base2_stock):
-        s_ij[(i, 2)] = stock
+    #for i, stock in zip(P, base2_stock):
+    #    s_ij[(i, 2)] = stock
 
     
 #calculate the Expected Back Orders with zero stock
