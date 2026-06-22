@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import math
 
-def run_metric_model_vari_new(df_data):
+def run_metric_model_vari_solo_V2(df_data):
 
 #-------------------------------------------------------------------
 #1. INITIALIZATION
@@ -27,7 +27,7 @@ def run_metric_model_vari_new(df_data):
 #Load right sheet:
     demand_df = df_data["Total inventory costs"]
 
-#demad fractions for locations j
+#demand fractions for locations j
     f_j = {
         0: 1,               #this is VSM
         1: 0.1111,          #this is virtual hub in Rijssen
@@ -36,51 +36,28 @@ def run_metric_model_vari_new(df_data):
         4: 0.0342           #this is the regional hub in UAE
     }
 
-    #Transportation lead time data: 
-    O_j = { 
-        0: 0.0385, 
-        1: 0.0027, #this is virtual hub in Rijssen 
-        2: 0.1346, #this is VUSA 
-        3: 0.0110, #this is the regional hub in UK 
-        4: 0.1346  #this is the regional hub in UAE 
-    } 
-
-    #Emergency shipment lead time data:
-    E_j = {
-        1: 0.00274,
-        2: 0.01096,
-        3: 0.00274,
-        4: 0.01096
+    #Transportation lead time data:
+    O_j = {
+        0: 0.0385,
+        1: 0.0027, #this is virtual hub in Rijssen
+        2: 0.1346, #this is VUSA
+        3: 0.0110, #this is the regional hub in UK
+        4: 0.1346  #this is the regional hub in UAE
     }
 
-    #costs of emergency shipment
-    c_em = {
-        1: 0, #this is virtual hub in Rijssen
-        2: 5, #this is VUSA
-        3: 5, #this is the regional hub in UK
-        4: 5  #this is the regional hub in UAE 
-    }
-
-    # Lead time variance (YOU must calibrate these)
+    #Lead time variance
     Var_O_j = {
-        0: 0.0077, 
-        1: 0.000135, #this is virtual hub in Rijssen 
-        2: 0.00673, #this is VUSA 
-        3: 0.00055, #this is the regional hub in UK 
-        4: 0.00673
-    }
-
-    Var_E_j = {
-        1: 0.000137,
-        2: 0.000548,
-        3: 0.000137,
-        4: 0.000548
+        0: 0.0077,
+        1: 0.000135, #this is virtual hub in Rijssen
+        2: 0.00673,  #this is VUSA
+        3: 0.00055,  #this is the regional hub in UK
+        4: 0.00673   #this is the regional hub in UAE
     }
 
     variance_factor = 1
 
     Var_O_j = {j: variance_factor * value for j, value in Var_O_j.items()}
-    Var_E_j = {j: variance_factor * value for j, value in Var_E_j.items()}
+
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
 #-------------------------------------------------------------------
@@ -106,7 +83,7 @@ def run_metric_model_vari_new(df_data):
 
     #define locations
     L = [0, 1, 2, 3, 4]
-  
+
     #number of locations
     J = len(L)
 
@@ -117,9 +94,9 @@ def run_metric_model_vari_new(df_data):
 #Assigning demand to the parts:
 
     #demand parameter lambda
-    lambda_part = {}   
+    lambda_part = {}
 
-    #for loop looping over all indivdual parts
+    #for loop looping over all individual parts
     for _, row in demand_df.iterrows():
 
         #going over all the materials and assigning the demand to the right part
@@ -133,11 +110,11 @@ def run_metric_model_vari_new(df_data):
     for i in lambda_part:
         #loop over all the locations
         for j in L:
-            
-            #cacluate the demand per location and per part
+
+            #calculate the demand per location and per part
             lambda_ij[(i, j)] = lambda_part[i] * f_j[j]
 
-    # Assign urgency group to parts
+    #Assign urgency group to parts
     group_part = {}
 
     for _, row in cost_df.iterrows():
@@ -155,7 +132,7 @@ def run_metric_model_vari_new(df_data):
             return 1.00   # normal importance
         else:
             return 1.00
-    
+
     # ---------------------------------------------------
     # VARI-METRIC: DEMAND VARIANCE
     # ---------------------------------------------------
@@ -167,7 +144,6 @@ def run_metric_model_vari_new(df_data):
     for i in lambda_part:
         var_lambda_part[i] = lambda_part[i]
 
-
     def demand_var_during_leadtime(demand_mean, demand_var, lead_time_mean, lead_time_var):
 
         return (
@@ -176,17 +152,16 @@ def run_metric_model_vari_new(df_data):
         )
 
 #Assigning costs to the parts:
-    
+
     #cost parameter
     cost_part = {}
 
-    #for loop looping over all indivdual parts
+    #for loop looping over all individual parts
     for _, row in cost_df.iterrows():
 
         #going over all the materials and assigning the cost to the right part
         i = row["Material description"]
         cost_part[i] = row["Purchase price"] / row["Purchase price per"]
-
 
 #-------------------------------------------------------------------
 #5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
@@ -219,22 +194,21 @@ def run_metric_model_vari_new(df_data):
         for j in L:
             s_ij[(i, j)] = 0
 
+    #Uncomment these lines if the model should start from the current stock levels
     #for i, stock in zip(P, depot_stock):
     #    s_ij[(i, 0)] = stock
 
     #for i, stock in zip(P, base2_stock):
     #    s_ij[(i, 2)] = stock
 
-    
 #calculate the Expected Back Orders with zero stock
-    
+
     #making the mu parameter which represents the demand during lead time
     mu_i0 = {}
     EBO_i0 = {}
-    
+
     for i in P:
         mu_i0[i] = lambda_ij[(i, 0)] * O_j[0]
-
 
     def ebo_exact(mu, s):
 
@@ -246,10 +220,8 @@ def run_metric_model_vari_new(df_data):
 
         return max(0.0, term1 - term2)
 
-
     for i in P:
         EBO_i0[i] = ebo_exact(mu_i0[i], s_ij[(i, 0)])
-
 
     def ebo_vari_metric(mu, var, s):
 
@@ -290,7 +262,6 @@ def run_metric_model_vari_new(df_data):
 
         return total
 
-
     def var_bo(mu, s):
 
         ebo = ebo_exact(mu, s)
@@ -298,39 +269,14 @@ def run_metric_model_vari_new(df_data):
 
         return max(0.0, ebo2 - ebo ** 2)
 
-
 #-------------------------------------------------------------------
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
 #-------------------------------------------------------------------
-
-    gamma_table = [
-        (0.00, 0.00),
-        (0.3068, 0.1198),
-        (0.6469, 0.2900),
-        (0.8885, 0.6220),
-        (0.9785, 0.8969),
-        (0.9975, 0.9869),
-        (1.0000, 1.0000)
-    ]
-
-    def gamma_from_fillrate(beta0):
-
-        for k in range(len(gamma_table)-1):
-
-            x1, y1 = gamma_table[k]
-            x2, y2 = gamma_table[k+1]
-
-            if x1 <= beta0 <= x2:
-
-                return y1 + (beta0 - x1) * (y2 - y1) / (x2 - x1)
-
-        return 1.0
 
     #calculating the pipeline
     def compute_mu_ij():
 
         mu_ij = {}
-        theta_ij = {}
         var_ij = {}
         EBO_i0_dynamic = {}
 
@@ -347,25 +293,17 @@ def run_metric_model_vari_new(df_data):
                 O_j[0],
                 Var_O_j[0]
             )
-            
+
             EBO_i0_dynamic[i] = ebo_vari_metric(
                 mu_ij[(i, 0)],
                 var_ij[(i, 0)],
                 s_ij[(i, 0)]
             )
-            
+
             V_BO_s0 = var_bo(
                 mu_ij[(i, 0)],
                 s_ij[(i, 0)]
             )
-            
-            if lambda_ij[(i, 0)] > 0:
-                depot_fill_rate = max(
-                    0,
-                    1 - EBO_i0_dynamic[i] / lambda_ij[(i, 0)]
-                )
-            else:
-                depot_fill_rate = 0
 
             for j in L:
 
@@ -375,7 +313,6 @@ def run_metric_model_vari_new(df_data):
                 if lambda_ij[(i, 0)] == 0:
                     mu_ij[(i, j)] = 0
                     var_ij[(i, j)] = 0
-                    theta_ij[(i, j)] = 0
                     continue
 
                 # --------------------------
@@ -386,55 +323,21 @@ def run_metric_model_vari_new(df_data):
                 regular_lead_time = O_j[j] + waiting_time
 
                 # --------------------------
-                # STOCKOUT PROBABILITY
+                # TOTAL PIPELINE WITHOUT EMERGENCY SHIPMENTS
                 # --------------------------
-                mu_regular = lambda_ij[(i, j)] * regular_lead_time
+                mu_ij[(i, j)] = lambda_ij[(i, j)] * regular_lead_time
 
-                base_stockout_prob = 1 - poisson.cdf(
-                    s_ij[(i, j)],
-                    mu_regular
+                var_ij[(i, j)] = (
+                    demand_var_during_leadtime(
+                        lambda_ij[(i, j)],
+                        lambda_ij[(i, j)],
+                        regular_lead_time,
+                        Var_O_j[j]
+                    )
+                    + (f_j[j] ** 2) * V_BO_s0
                 )
 
-                # --------------------------
-                # EMERGENCY FRACTION WITH SIMULATION-BASED CORRECTION
-                # --------------------------
-                gamma = gamma_from_fillrate(depot_fill_rate)
-                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate * gamma
-
-                # --------------------------
-                # SPLIT DEMAND FLOWS
-                # --------------------------
-                lambda_em = theta_ij[(i, j)] * lambda_ij[(i, j)]
-                lambda_reg = (1 - theta_ij[(i, j)]) * lambda_ij[(i, j)]
-
-                # --------------------------
-                # SEPARATE PIPELINES
-                # --------------------------
-                mu_em = lambda_em * E_j[j]
-                mu_reg = lambda_reg * regular_lead_time
-
-                # --------------------------
-                # TOTAL EFFECTIVE PIPELINE
-                # --------------------------
-                mu_ij[(i, j)] = mu_em + mu_reg
-
-                var_reg = demand_var_during_leadtime(
-                    lambda_reg,
-                    lambda_reg,
-                    regular_lead_time,
-                    Var_O_j[j]
-                )
-
-                var_em = demand_var_during_leadtime(
-                    lambda_em,
-                    lambda_em,
-                    E_j[j],
-                    Var_E_j[j]
-                )
-
-                var_ij[(i, j)] = var_em + var_reg + (f_j[j] ** 2) * V_BO_s0
-
-        return mu_ij, var_ij, theta_ij
+        return mu_ij, var_ij
 
 #calculating the expected backorders for the bases j with the pipeline
 
@@ -454,11 +357,9 @@ def run_metric_model_vari_new(df_data):
 
         return EBO_ij
 
-
 #-------------------------------------------------------------------
 #7. CALCULATE EXPECTED BACKORDERS REDUCTION
 #-------------------------------------------------------------------
-
 
     #making a simple function that calculates the reduction
     def ebo_reduction(mu, var, s):
@@ -467,7 +368,6 @@ def run_metric_model_vari_new(df_data):
         future = ebo_vari_metric(mu, var, s + 1)
 
         return max(0.0, current - future)
-
 
 #-------------------------------------------------------------------
 #9. OPTIMIZATION PROCEDURE
@@ -483,18 +383,18 @@ def run_metric_model_vari_new(df_data):
     #WHILE budget not exhausted:
     while True:
 
-        mu_ij, var_ij, theta_ij = compute_mu_ij()
+        mu_ij, var_ij = compute_mu_ij()
         EBO_ij = compute_EBO(mu_ij, var_ij)
-        
+
         best_i = None
         best_j = None
         best_eff = -1
-        
+
         #looping over all the distinct parts i
         for i in P:
 
             #looping over all the bases j
-            for j in L:            
+            for j in L:
 
                 #calculate the ebo reduction
                 DeltaEBO[(i, j)] = ebo_reduction(mu_ij[(i, j)], var_ij[(i, j)], s_ij[(i, j)])
@@ -504,7 +404,7 @@ def run_metric_model_vari_new(df_data):
                 urgency_weight = group_weight(group_part[i])
 
                 Efficiency[(i, j)] = (
-                    DeltaEBO[(i, j)] 
+                    DeltaEBO[(i, j)]
                     * urgency_weight
                     / cost_part[i]  #normalized_cost for normalizing the cost and decreasing the impact of the costs
                 )
@@ -516,7 +416,7 @@ def run_metric_model_vari_new(df_data):
                     best_j = j
 
         #stop if the costs goes over the budget
-        if TotalCost + cost_part[best_i] > C:
+        if best_i is None or TotalCost + cost_part[best_i] > C:
             break
 
         #Allocate one stock unit to the best place
@@ -525,7 +425,7 @@ def run_metric_model_vari_new(df_data):
         #update the totalcost with the part added
         TotalCost += cost_part[best_i]
 
-        mu_ij, var_ij, theta_ij = compute_mu_ij()
+        mu_ij, var_ij = compute_mu_ij()
         EBO_ij = compute_EBO(mu_ij, var_ij)
 
 # ---------------------------------------------------
@@ -545,9 +445,7 @@ def run_metric_model_vari_new(df_data):
 
             total_ebo += EBO_ij[(i, j)]
 
-
         SupplyAvailability[i] = 1 - total_ebo
-
 
     TotalEBO_bases = sum(
         EBO_ij[(i, j)]
@@ -556,18 +454,6 @@ def run_metric_model_vari_new(df_data):
         if j != 0
     )
 
-    avg_theta = {}
-
-    for j in L:
-
-        if j == 0:
-            continue
-
-        avg_theta[j] = (
-            sum(theta_ij[(i, j)] for i in P)
-            / len(P)
-        )
-    
 #-------------------------------------------------------------------
 #10. OBJECTIVE FUNCTION
 #-------------------------------------------------------------------
@@ -578,23 +464,7 @@ def run_metric_model_vari_new(df_data):
 
         for j in L:
 
-
             TotalEBO += EBO_ij[(i,j)]
-
-
-    TotalEmergencyCost = 0
-
-    for i in P:
-        for j in L:
-
-            if j == 0:
-                continue
-
-            TotalEmergencyCost += (
-                theta_ij[(i,j)]
-                * lambda_ij[(i,j)]
-                * c_em[j]
-            )
 
     # ---------------------------------------------------
     # RESULTS
@@ -615,11 +485,8 @@ def run_metric_model_vari_new(df_data):
         "total": TotalEBO,
         "TotalCost": TotalCost,
         "SupplyAvailability": SupplyAvailability,
-        "theta_ij": theta_ij,
-        "emergencycost": TotalEmergencyCost,
         "var_ij": var_ij,
         "TotalEBO_bases": TotalEBO_bases,
-        "emergency": avg_theta,
         "group_part": group_part,
         "weight_part": {
             i: group_weight(group_part[i])
