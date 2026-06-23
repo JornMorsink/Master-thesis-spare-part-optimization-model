@@ -1,0 +1,265 @@
+import heapq
+import random
+import math
+import statistics
+from collections import deque
+
+
+def run_simulation(
+    mean_demand,
+    lead_time_L,
+    base_stock_s,
+    emerg_time,
+    lead_time_L0,
+    base_stock_s0,
+    sim_duration=300_000,
+    warmup=50_000,
+    seed=42,
+):
+    rng = random.Random(seed)
+    I = len(mean_demand)
+
+    # State
+    depot_oh = base_stock_s0
+    depot_bo = 0
+    depot_bo_q = deque()
+
+    local_oh = list(base_stock_s)
+    local_bo = [0] * I
+
+    # Statistics
+    demand_total = [0] * I
+    local_fill = [0] * I
+    local_stockout = [0] * I
+    emergency = [0] * I
+
+    depot_req_total = 0
+    depot_req_filled = 0
+
+    bo_area_local = [0.0] * I
+    bo_area_depot = 0.0
+    last_t = 0.0
+
+    pq = []
+    seq = 0
+
+    def push(t, kind, data=None):
+        nonlocal seq
+        if data is None:
+            data = {}
+        seq += 1
+        heapq.heappush(pq, (t, seq, kind, data))
+
+    def accumulate(t):
+        nonlocal last_t, bo_area_depot
+        start = max(last_t, warmup)
+        if t > start:
+            dt = t - start
+            for i in range(I):
+                bo_area_local[i] += local_bo[i] * dt
+            bo_area_depot += depot_bo * dt
+        last_t = t
+
+    def order_depot_from_supplier(t):
+        push(t + lead_time_L0, "DEPOT_REPLENISH")
+
+    def request_from_depot(i, t, active):
+        nonlocal depot_oh, depot_bo, depot_req_total, depot_req_filled
+
+        if active:
+            depot_req_total += 1
+
+        if depot_oh > 0:
+            depot_oh -= 1
+            if active:
+                depot_req_filled += 1
+            push(t + lead_time_L[i], "LOCAL_REPLENISH", {"i": i})
+        else:
+            depot_bo += 1
+            depot_bo_q.append(i)
+
+        order_depot_from_supplier(t)
+
+    # Initial demand events
+    for i in range(I):
+        push(rng.expovariate(mean_demand[i]), "DEMAND", {"i": i})
+
+    current_t = 0.0
+
+    while pq:
+        t, _, kind, data = heapq.heappop(pq)
+
+        if t > sim_duration:
+            break
+
+        active = t >= warmup
+        accumulate(t)
+        current_t = t
+
+        if kind == "DEMAND":
+            i = data["i"]
+
+            # Schedule next demand
+            push(t + rng.expovariate(mean_demand[i]), "DEMAND", {"i": i})
+
+            if active:
+                demand_total[i] += 1
+
+            if local_oh[i] > 0:
+                # Demand filled from local warehouse
+                local_oh[i] -= 1
+
+                if active:
+                    local_fill[i] += 1
+
+                request_from_depot(i, t, active)
+
+            else:
+                # Local stockout
+                if active:
+                    local_stockout[i] += 1
+
+                if depot_oh > 0:
+                    # Emergency shipment from depot
+                    depot_oh -= 1
+
+                    if active:
+                        emergency[i] += 1
+
+                    push(t + emerg_time[i], "EMERGENCY_ARRIVAL", {"i": i})
+
+                    # Depot replenishes the unit used for emergency shipment
+                    order_depot_from_supplier(t)
+
+                else:
+                    # Customer backorder at local warehouse
+                    local_bo[i] += 1
+                    request_from_depot(i, t, active)
+
+        elif kind == "LOCAL_REPLENISH":
+            i = data["i"]
+
+            if local_bo[i] > 0:
+                local_bo[i] -= 1
+            else:
+                local_oh[i] += 1
+
+        elif kind == "DEPOT_REPLENISH":
+            if depot_bo > 0:
+                i_wait = depot_bo_q.popleft()
+                depot_bo -= 1
+                push(t + lead_time_L[i_wait], "LOCAL_REPLENISH", {"i": i_wait})
+            else:
+                depot_oh += 1
+
+        elif kind == "EMERGENCY_ARRIVAL":
+            pass
+
+    accumulate(current_t)
+
+    effective_time = max(current_t - warmup, 1e-9)
+
+    depot_fill_rate = depot_req_filled / max(depot_req_total, 1)
+
+    fill_rate_local = [
+        local_fill[i] / max(demand_total[i], 1)
+        for i in range(I)
+    ]
+
+    theta_sim = [
+        emergency[i] / max(demand_total[i], 1)
+        for i in range(I)
+    ]
+
+    theta_approx = [
+        (1 - fill_rate_local[i]) * depot_fill_rate
+        for i in range(I)
+    ]
+
+    return {
+        "fill_rate_local": fill_rate_local,
+        "fill_rate_depot": depot_fill_rate,
+        "exp_bo_local": [
+            bo_area_local[i] / effective_time
+            for i in range(I)
+        ],
+        "exp_bo_depot": bo_area_depot / effective_time,
+        "theta_sim": theta_sim,
+        "theta_approx": theta_approx,
+        "demand_total": demand_total,
+    }
+
+
+def run_replications(n_reps=20, base_seed=1000, **kwargs):
+    reps = [
+        run_simulation(seed=base_seed + r, **kwargs)
+        for r in range(n_reps)
+    ]
+
+    I = len(reps[0]["fill_rate_local"])
+    out = {}
+
+    scalar_keys = ["fill_rate_depot", "exp_bo_depot"]
+    vector_keys = [
+        "fill_rate_local",
+        "exp_bo_local",
+        "theta_sim",
+        "theta_approx",
+        "demand_total",
+    ]
+
+    for key in scalar_keys:
+        out[key] = statistics.mean(r[key] for r in reps)
+
+    for key in vector_keys:
+        out[key] = []
+        for i in range(I):
+            out[key].append(statistics.mean(r[key][i] for r in reps))
+
+    return out
+
+
+def supervisor_test(local_base_stock):
+    params = dict(
+        mean_demand=[2.0, 3.0, 1.5],
+        lead_time_L=[2.0, 3.0, 2.5],
+        base_stock_s=[local_base_stock, 14, 7],
+        emerg_time=[0.5, 0.5, 0.5],
+        lead_time_L0=5.0,
+        sim_duration=10_000,
+        warmup=5_000,
+    )
+
+    print("\n" + "=" * 80)
+    print(f"Supervisor test: local warehouse 1 base-stock level = {local_base_stock}")
+    print("=" * 80)
+    print(
+        f"{'s0':>5} "
+        f"{'FR WH1':>10} "
+        f"{'EBO WH1':>10} "
+        f"{'theta_sim':>12} "
+        f"{'theta_approx':>14} "
+        f"{'FR depot':>10}"
+    )
+    print("-" * 80)
+
+    for s0 in [0, 10, 20, 30, 40, 50]:
+        r = run_replications(
+            n_reps=20,
+            base_seed=1000,
+            **{**params, "base_stock_s0": s0}
+        )
+
+        print(
+            f"{s0:>5} "
+            f"{r['fill_rate_local'][0]:>10.4f} "
+            f"{r['exp_bo_local'][0]:>10.4f} "
+            f"{r['theta_sim'][0]:>12.4f} "
+            f"{r['theta_approx'][0]:>14.4f} "
+            f"{r['fill_rate_depot']:>10.4f}"
+        )
+
+
+if __name__ == "__main__":
+    supervisor_test(local_base_stock=8)
+    supervisor_test(local_base_stock=4)
