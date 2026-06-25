@@ -38,7 +38,6 @@ def run_metric_model_vari_solo_V2(df_data):
 
     #Transportation lead time data:
     O_j = {
-        0: 0.0385,
         1: 0.0027, #this is virtual hub in Rijssen
         2: 0.1346, #this is VUSA
         3: 0.0110, #this is the regional hub in UK
@@ -163,6 +162,15 @@ def run_metric_model_vari_solo_V2(df_data):
         i = row["Material description"]
         cost_part[i] = row["Purchase price"] / row["Purchase price per"]
 
+    #Setting lead time for the depot
+    O_i0 = {}
+
+    #loop over all the materials and retrieve the corresponding lead time
+    for _, row in cost_df.iterrows():
+        i = row["Material description"]
+        O_i0[i] = row["Lead time depot"]
+
+
 #-------------------------------------------------------------------
 #5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
 #-------------------------------------------------------------------
@@ -208,7 +216,7 @@ def run_metric_model_vari_solo_V2(df_data):
     EBO_i0 = {}
 
     for i in P:
-        mu_i0[i] = lambda_ij[(i, 0)] * O_j[0]
+        mu_i0[i] = lambda_ij[(i, 0)] * O_i0[i]
 
     def ebo_exact(mu, s):
 
@@ -285,12 +293,12 @@ def run_metric_model_vari_solo_V2(df_data):
             # --------------------------
             # DEPOT PIPELINE
             # --------------------------
-            mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_j[0]
+            mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_i0[i]
 
             var_ij[(i, 0)] = demand_var_during_leadtime(
                 lambda_ij[(i, 0)],
                 lambda_ij[(i, 0)],
-                O_j[0],
+                O_i0[i],
                 Var_O_j[0]
             )
 

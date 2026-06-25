@@ -37,8 +37,7 @@ def run_metric_model_vari_new(df_data):
     }
 
     #Transportation lead time data: 
-    O_j = { 
-        0: 0.0385, 
+    O_j = {  
         1: 0.0027, #this is virtual hub in Rijssen 
         2: 0.1346, #this is VUSA 
         3: 0.0110, #this is the regional hub in UK 
@@ -137,6 +136,7 @@ def run_metric_model_vari_new(df_data):
             #cacluate the demand per location and per part
             lambda_ij[(i, j)] = lambda_part[i] * f_j[j]
 
+
     # Assign urgency group to parts
     group_part = {}
 
@@ -187,6 +187,14 @@ def run_metric_model_vari_new(df_data):
         i = row["Material description"]
         cost_part[i] = row["Purchase price"] / row["Purchase price per"]
 
+    #Setting lead time for the depot
+    O_i0 = {}
+
+    #loop over all the materials and retrieve the corresponding lead time
+    for _, row in cost_df.iterrows():
+        i = row["Material description"]
+        O_i0[i] = row["Lead time depot"]
+
 
 #-------------------------------------------------------------------
 #5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
@@ -233,7 +241,7 @@ def run_metric_model_vari_new(df_data):
     EBO_i0 = {}
     
     for i in P:
-        mu_i0[i] = lambda_ij[(i, 0)] * O_j[0]
+        mu_i0[i] = lambda_ij[(i, 0)] * O_i0[i]
 
 
     def ebo_exact(mu, s):
@@ -303,29 +311,6 @@ def run_metric_model_vari_new(df_data):
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
 #-------------------------------------------------------------------
 
-    gamma_table = [
-        (0.00, 0.00),
-        (0.3068, 0.1198),
-        (0.6469, 0.2900),
-        (0.8885, 0.6220),
-        (0.9785, 0.8969),
-        (0.9975, 0.9869),
-        (1.0000, 1.0000)
-    ]
-
-    def gamma_from_fillrate(beta0):
-
-        for k in range(len(gamma_table)-1):
-
-            x1, y1 = gamma_table[k]
-            x2, y2 = gamma_table[k+1]
-
-            if x1 <= beta0 <= x2:
-
-                return y1 + (beta0 - x1) * (y2 - y1) / (x2 - x1)
-
-        return 1.0
-
     #calculating the pipeline
     def compute_mu_ij():
 
@@ -339,12 +324,12 @@ def run_metric_model_vari_new(df_data):
             # --------------------------
             # DEPOT PIPELINE
             # --------------------------
-            mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_j[0]
+            mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_i0[i]
 
             var_ij[(i, 0)] = demand_var_during_leadtime(
                 lambda_ij[(i, 0)],
                 lambda_ij[(i, 0)],
-                O_j[0],
+                O_i0[i],
                 Var_O_j[0]
             )
             
@@ -398,8 +383,7 @@ def run_metric_model_vari_new(df_data):
                 # --------------------------
                 # EMERGENCY FRACTION WITH SIMULATION-BASED CORRECTION
                 # --------------------------
-                gamma = gamma_from_fillrate(depot_fill_rate)
-                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate * gamma
+                theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate
 
                 # --------------------------
                 # SPLIT DEMAND FLOWS
@@ -503,10 +487,19 @@ def run_metric_model_vari_new(df_data):
                 #normalized_cost = math.log1p(cost_part[i])
                 urgency_weight = group_weight(group_part[i])
 
+                if j != 0:
+                    emergency_cost_penalty = (
+                        theta_ij[(i, j)]
+                        * lambda_ij[(i, j)]
+                        * c_em[j]
+                    )
+                else:
+                    emergency_cost_penalty = 0
+
                 Efficiency[(i, j)] = (
                     DeltaEBO[(i, j)] 
                     * urgency_weight
-                    / cost_part[i]  #normalized_cost for normalizing the cost and decreasing the impact of the costs
+                    / (cost_part[i] + emergency_cost_penalty)
                 )
 
                 if Efficiency[(i, j)] > best_eff:

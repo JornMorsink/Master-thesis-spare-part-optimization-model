@@ -61,6 +61,7 @@ def run_simulation(
 
     local_oh = list(base_stock_s)
     local_bo = [0] * I
+    local_stockout = [0] * I
 
     demand_total = [0] * I
     local_fill = [0] * I
@@ -141,6 +142,8 @@ def run_simulation(
 
             else:
                 # Local warehouse is out of stock
+                if active:
+                    local_stockout[i] += 1
 
                 if depot_oh > 0:
                     # Emergency shipment from depot to customer
@@ -190,6 +193,11 @@ def run_simulation(
         for i in range(I)
     ]
 
+    stockout_fraction = [
+        local_stockout[i] / max(demand_total[i], 1)
+        for i in range(I)
+    ]
+
     theta_sim = [
         emergency[i] / max(demand_total[i], 1)
         for i in range(I)
@@ -203,7 +211,7 @@ def run_simulation(
     depot_availability = depot_available_area / effective_time
 
     theta_approx_sim = [
-        (1 - shelf_fill_rate[i]) * depot_availability
+        stockout_fraction[i] * depot_availability
         for i in range(I)
     ]
 
