@@ -55,9 +55,9 @@ def run_metric_model_vari_new(df_data):
     #costs of emergency shipment
     c_em = {
         1: 0, #this is virtual hub in Rijssen
-        2: 5, #this is VUSA
-        3: 5, #this is the regional hub in UK
-        4: 5  #this is the regional hub in UAE 
+        2: 50, #this is VUSA
+        3: 25, #this is the regional hub in UK
+        4: 75  #this is the regional hub in UAE 
     }
 
     # Lead time variance (YOU must calibrate these)
