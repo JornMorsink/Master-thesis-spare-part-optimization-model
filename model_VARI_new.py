@@ -33,7 +33,7 @@ def run_metric_model_vari_new(df_data):
         1: 0.1111,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
         3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342           #this is the regional hub in UAE
+        4: 0.0342          #this is the regional hub in UAE
     }
 
     #Transportation lead time data: 
@@ -46,18 +46,18 @@ def run_metric_model_vari_new(df_data):
 
     #Emergency shipment lead time data:
     E_j = {
-        1: 0.00274,
+        1: 0.00247,
         2: 0.01096,
-        3: 0.00274,
+        3: 0.00247,
         4: 0.01096
     }
 
     #costs of emergency shipment
     c_em = {
         1: 0, #this is virtual hub in Rijssen
-        2: 50, #this is VUSA
-        3: 25, #this is the regional hub in UK
-        4: 75  #this is the regional hub in UAE 
+        2: 99.45, #this is VUSA
+        3: 59.09, #this is the regional hub in UK
+        4: 223.68  #this is the regional hub in UAE 
     }
 
     # Lead time variance (YOU must calibrate these)
@@ -490,7 +490,6 @@ def run_metric_model_vari_new(df_data):
                 if j != 0:
                     emergency_cost_penalty = (
                         theta_ij[(i, j)]
-                        * lambda_ij[(i, j)]
                         * c_em[j]
                     )
                 else:
