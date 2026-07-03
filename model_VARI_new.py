@@ -46,9 +46,9 @@ def run_metric_model_vari_new(df_data):
 
     #Emergency shipment lead time data:
     E_j = {
-        1: 0.00247,
+        1: 0.00274,
         2: 0.01096,
-        3: 0.00247,
+        3: 0.00274,
         4: 0.01096
     }
 
@@ -146,11 +146,11 @@ def run_metric_model_vari_new(df_data):
 
     def group_weight(group):
         if group == 1:
-            return 1.50   # 50% more important
+            return 5   # 50% more important
         elif group == 2:
-            return 1.30   # 30% more important
+            return 3.80   # 30% more important
         elif group == 3:
-            return 1.15   # 15% more important
+            return 2.90   # 15% more important
         elif group == 4:
             return 1.00   # normal importance
         else:
@@ -496,8 +496,8 @@ def run_metric_model_vari_new(df_data):
                     emergency_cost_penalty = 0
 
                 Efficiency[(i, j)] = (
-                    DeltaEBO[(i, j)] 
-                    * urgency_weight
+                    (DeltaEBO[(i, j)] 
+                    * urgency_weight)
                     / (cost_part[i] + emergency_cost_penalty)
                 )
 
