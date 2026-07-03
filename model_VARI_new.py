@@ -146,11 +146,11 @@ def run_metric_model_vari_new(df_data):
 
     def group_weight(group):
         if group == 1:
-            return 5   # 50% more important
+            return 1.50   # 50% more important
         elif group == 2:
-            return 3.80   # 30% more important
+            return 1.30   # 30% more important
         elif group == 3:
-            return 2.90   # 15% more important
+            return 1.15   # 15% more important
         elif group == 4:
             return 1.00   # normal importance
         else:
