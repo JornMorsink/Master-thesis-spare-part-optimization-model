@@ -316,6 +316,7 @@ def compare_simulation_with_supervisor(local_base_stock):
 
     print(
         f"{'s0':>5} "
+        f"{'Depot FR':>10} "
         f"{'FR analytical':>14} "
         f"{'FR sim shelf':>13} "
         f"{'FR sim service':>15} "
@@ -342,6 +343,7 @@ def compare_simulation_with_supervisor(local_base_stock):
 
         print(
             f"{s0:>5} "
+            f"{beta0:>10.3f} "
             f"{fr_a:>14.3f} "
             f"{r['shelf_fill_rate'][0]:>13.3f} "
             f"{r['service_fill_rate'][0]:>15.3f} "
@@ -358,4 +360,4 @@ def compare_simulation_with_supervisor(local_base_stock):
 # ============================================================
 
 if __name__ == "__main__":
-    compare_simulation_with_supervisor(local_base_stock=8)
+    compare_simulation_with_supervisor(local_base_stock=2)
