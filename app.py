@@ -63,7 +63,7 @@ if uploaded_file is not None:
     if st.button("Run METRIC Calculation"):
 
         # Run calculations from separate file
-        results = run_metric_model_vari_new(df_data)
+        results = run_metric_model_vari_convex(df_data)
 
         # ---------------------------------------------------
         # SHOW RESULTS
