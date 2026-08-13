@@ -62,18 +62,18 @@ def run_metric_model_vari_new(df_data):
 
     # Lead time variance (YOU must calibrate these)
     Var_O_j = {
-        0: 0.0077, 
-        1: 0.000135, #this is virtual hub in Rijssen 
-        2: 0.00673, #this is VUSA 
-        3: 0.00055, #this is the regional hub in UK 
-        4: 0.00673
+        0: 0.01155, 
+        1: 0.00135, #this is virtual hub in Rijssen 
+        2: 0.0673, #this is VUSA 
+        3: 0.0055, #this is the regional hub in UK 
+        4: 0.0673
     }
 
     Var_E_j = {
-        1: 0.000137,
-        2: 0.000548,
-        3: 0.000137,
-        4: 0.000548
+        1: 0.00137,
+        2: 0.00548,
+        3: 0.00137,
+        4: 0.00548
     }
 
     variance_factor = 1
@@ -150,7 +150,7 @@ def run_metric_model_vari_new(df_data):
         elif group == 2:
             return 1.30   # 30% more important
         elif group == 3:
-            return 1.15   # 15% more important
+            return 1.15  # 15% more important
         elif group == 4:
             return 1.00   # normal importance
         else:
