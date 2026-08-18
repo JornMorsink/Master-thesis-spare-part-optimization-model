@@ -7,6 +7,7 @@ from model_VARI_solo import run_metric_model_vari_solo
 from model_VARI_new import run_metric_model_vari_new
 from model_VARI_soloV2 import run_metric_model_vari_solo_V2
 from model_VARI_convex import run_metric_model_vari_convex
+from model_current_sit import run_metric_model_current_sit
 
 # ---------------------------------------------------
 # PAGE TITLE
@@ -56,7 +57,7 @@ if uploaded_file is not None:
 
     if st.button("Run METRIC Calculation"):
 
-        results = run_metric_model_vari_convex(df_data)
+        results = run_metric_model_vari_new(df_data)
 
         # ---------------------------------------------------
         # GENERAL RESULTS
@@ -118,111 +119,3 @@ if uploaded_file is not None:
         hub_df["Weight"] = hub_df["Material"].map(results["weight_part"])
 
         st.dataframe(hub_df)
-
-        # ---------------------------------------------------
-        # CONVEXITY SUMMARY
-        # ---------------------------------------------------
-
-        st.header("Convexity / Starting Point Analysis")
-
-        if "convexity_summary" in results:
-
-            convexity_summary = results["convexity_summary"]
-
-            st.write(
-                "The table below shows the recommended starting stock level "
-                "for each item and location based on where marginal waiting-time "
-                "reductions become non-increasing."
-            )
-
-            st.dataframe(convexity_summary)
-
-        else:
-            st.warning("No convexity summary was returned by the model.")
-
-        # ---------------------------------------------------
-        # CONVEXITY CURVES
-        # ---------------------------------------------------
-
-        if "convexity_curves" in results:
-
-            convexity_curves = results["convexity_curves"]
-
-            st.subheader("Detailed convexity curves")
-
-            # Select one item
-            materials = sorted(convexity_curves["Item"].unique())
-
-            selected_material = st.selectbox(
-                "Select material for convexity analysis",
-                materials
-            )
-
-            material_curve = convexity_curves[
-                convexity_curves["Item"] == selected_material
-            ]
-
-            # Select location
-            locations = material_curve["Location"].unique()
-
-            selected_location = st.selectbox(
-                "Select location",
-                locations
-            )
-
-            selected_curve = material_curve[
-                material_curve["Location"] == selected_location
-            ].copy()
-
-            st.dataframe(selected_curve)
-
-            # ---------------------------------------------------
-            # WAITING TIME GRAPH
-            # ---------------------------------------------------
-
-            st.subheader("Total waiting time by stock level")
-
-            waiting_chart = (
-                selected_curve[
-                    ["Stock", "Total waiting time"]
-                ]
-                .set_index("Stock")
-            )
-
-            st.line_chart(waiting_chart)
-
-            # ---------------------------------------------------
-            # MARGINAL REDUCTION GRAPH
-            # ---------------------------------------------------
-
-            st.subheader("Marginal waiting-time reduction")
-
-            marginal_chart = (
-                selected_curve[
-                    ["Stock", "Marginal waiting-time reduction"]
-                ]
-                .dropna()
-                .set_index("Stock")
-            )
-
-            st.line_chart(marginal_chart)
-
-            # ---------------------------------------------------
-            # SECOND DIFFERENCE
-            # ---------------------------------------------------
-
-            st.subheader("Second difference")
-
-            second_diff_chart = (
-                selected_curve[
-                    ["Stock", "Second difference"]
-                ]
-                .dropna()
-                .set_index("Stock")
-            )
-
-            st.line_chart(second_diff_chart)
-
-        else:
-            st.warning("No convexity curves were returned by the model.")
-

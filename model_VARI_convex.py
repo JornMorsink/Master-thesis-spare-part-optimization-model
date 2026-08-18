@@ -652,7 +652,7 @@ def run_metric_model_vari_convex(df_data):
     # Run the diagnostic before the optimization mutates the stock levels.
     # Increase max_stock if a convex region is not found for some SKUs.
     convexity_summary, convexity_curves = check_convexity_per_item(
-        max_stock=20,
+        max_stock=50,
         tol=1e-10,
         min_tail_points=3,
     )
