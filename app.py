@@ -78,7 +78,77 @@ if uploaded_file is not None:
             "Average Supply Availability",
             f"{sum(results['SupplyAvailability'].values()) / len(results['SupplyAvailability']):.2%}"
         )
+        # ---------------------------------------------------
+        # RESULTS PER BASE
+        # ---------------------------------------------------
 
+        st.header("Results per base")
+
+        location_names = {
+            0: "VSM",
+            1: "Virtual hub (NL)",
+            2: "VUSA",
+            3: "Regional hub (UK)",
+            4: "Regional hub (UAE)"
+        }
+
+        base_results = []
+
+        for j in range(results["J"]):
+
+            # Total EBO at location j
+            total_ebo_base = sum(
+                results["EBO_ij"][(i, j)]
+                for i in results["demand"].keys()
+            )
+
+            # Average supply availability at location j
+            # Consistent with the availability logic currently used in the model
+            availability_values = [
+                max(0.0, 1 - results["EBO_ij"][(i, j)])
+                for i in results["demand"].keys()
+            ]
+
+            avg_supply_availability_base = (
+                sum(availability_values) / len(availability_values)
+            )
+
+            base_results.append(
+                {
+                    "Hub": j,
+                    "Location": location_names[j],
+                    "Total EBO": total_ebo_base,
+                    "Average Supply Availability": avg_supply_availability_base
+                }
+            )
+
+        base_results_df = pd.DataFrame(base_results)
+
+        st.dataframe(
+            base_results_df.style.format({
+                "Total EBO": "{:.3f}",
+                "Average Supply Availability": "{:.2%}"
+            })
+        )
+
+
+        for _, row in base_results_df.iterrows():
+
+            st.subheader(row["Location"])
+
+            col1, col2 = st.columns(2)
+
+            col1.metric(
+                "Total EBO",
+                f"{row['Total EBO']:.3f}"
+            )
+
+            col2.metric(
+                "Supply Availability",
+                f"{row['Average Supply Availability']:.2%}"
+            )
+
+            
         # ---------------------------------------------------
         # HUB RESULTS
         # ---------------------------------------------------
