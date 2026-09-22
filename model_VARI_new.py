@@ -33,7 +33,7 @@ def run_metric_model_vari_new(df_data):
         1: 0.1111,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
         3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342           #this is the regional hub in UAE
+        4: 0.0342          #this is the regional hub in UAE
     }
 
     #Transportation lead time data: 
@@ -60,6 +60,7 @@ def run_metric_model_vari_new(df_data):
         4: 223.68  #this is the regional hub in UAE 
     }
 
+    # Lead time variance 
     # Lead time variance (YOU must calibrate these)
     Var_O_j = {
         0: 0.0077, 
@@ -200,38 +201,98 @@ def run_metric_model_vari_new(df_data):
 #5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
 #-------------------------------------------------------------------
 
-#Initializing the inventory levels and setting them to zero
-    depot_stock = [
-        17, 21, 2, 2, 9, 4, 17, 37, 55, 26,
-        10, 14, 76, 22, 4, 11, 12, 19, 5, 55,
-        53, 50, 60, 83, 65, 1, 4, 12, 4, 54,
-        18, 24, 10, 27, 92, 101, 1, 19, 12, 18,
-        83, 45, 32, 22, 127, 62, 76, 56, 5, 43,
-        26, 5, 6, 12, 5, 9, 81, 10, 73, 6, 4
+    # ---------------------------------------------------
+    # INITIAL INVENTORY LEVELS
+    # ---------------------------------------------------
+
+    # Starting values obtained from the convexity analysis.
+    # Location indices:
+    # 0 = VSM
+    # 1 = Virtual hub (NL)
+    # 2 = VUSA
+    # 3 = UK hub
+    # 4 = UAE hub
+
+    starting_values = [
+        [0, 0, 0,  0, 0],   # Item 1
+        [0, 0, 1,  0, 0],   # Item 2
+        [0, 0, 0,  0, 0],   # Item 3
+        [0, 0, 0,  0, 0],   # Item 4
+        [0, 0, 0,  0, 0],   # Item 5
+        [0, 0, 0,  0, 0],   # Item 6
+        [0, 0, 15, 0, 0],   # Item 7
+        [0, 0, 0,  0, 0],   # Item 8
+        [0, 0, 0,  0, 0],   # Item 9
+        [0, 0, 5,  0, 0],   # Item 10
+        [0, 0, 0,  0, 0],   # Item 11
+        [0, 0, 6,  0, 0],   # Item 12
+        [0, 0, 1,  0, 0],   # Item 13
+        [0, 0, 6,  0, 0],   # Item 14
+        [0, 0, 0,  0, 0],   # Item 15
+        [0, 0, 24, 0, 0],   # Item 16
+        [0, 0, 0,  0, 0],   # Item 17
+        [0, 0, 0,  0, 0],   # Item 18
+        [0, 0, 0,  0, 0],   # Item 19
+        [0, 0, 0,  0, 0],   # Item 20
+        [0, 0, 26, 0, 0],   # Item 21
+        [0, 0, 22, 0, 0],   # Item 22
+        [0, 0, 17, 0, 0],   # Item 23
+        [0, 0, 10, 0, 0],   # Item 24
+        [0, 0, 10, 0, 0],   # Item 25
+        [0, 0, 9,  0, 0],   # Item 26
+        [0, 0, 9,  0, 0],   # Item 27
+        [0, 0, 9,  0, 0],   # Item 28
+        [0, 0, 9,  0, 0],   # Item 29
+        [0, 0, 8,  0, 0],   # Item 30
+        [0, 0, 7,  0, 0],   # Item 31
+        [0, 0, 6,  0, 0],   # Item 32
+        [0, 0, 3,  0, 0],   # Item 33
+        [0, 0, 2,  0, 0],   # Item 34
+        [0, 0, 0,  0, 0],   # Item 35
+        [0, 1, 0,  0, 2],   # Item 36
+        [0, 0, 0,  0, 0],   # Item 37
+        [0, 0, 0,  0, 0],   # Item 38
+        [0, 0, 1,  0, 0],   # Item 39
+        [0, 0, 1,  0, 0],   # Item 40
+        [0, 0, 1,  0, 0],   # Item 41
+        [0, 0, 0,  0, 0],   # Item 42
+        [0, 0, 0,  0, 0],   # Item 43
+        [0, 0, 0,  0, 0],   # Item 44
+        [0, 0, 0,  0, 0],   # Item 45
+        [0, 0, 4,  0, 0],   # Item 46
+        [0, 0, 4,  0, 0],   # Item 47
+        [0, 0, 6,  0, 0],   # Item 48
+        [0, 0, 11, 0, 0],   # Item 49
+        [0, 0, 13, 0, 0],   # Item 50
+        [0, 0, 5,  0, 0],   # Item 51
+        [0, 0, 4,  0, 0],   # Item 52
+        [0, 0, 1,  0, 0],   # Item 53
+        [0, 0, 3,  0, 0],   # Item 54
+        [0, 0, 3,  0, 0],   # Item 55
+        [0, 0, 3,  0, 0],   # Item 56
+        [0, 0, 2,  0, 0],   # Item 57
+        [0, 0, 2,  0, 0],   # Item 58
+        [0, 0, 2,  0, 0],   # Item 59
+        [0, 0, 2,  0, 0],   # Item 60
+        [0, 0, 2,  0, 0],   # Item 61
+        [0, 0, 1,  0, 0],   # Item 62
     ]
 
-    base2_stock = [
-        3, 3, 2, 1, 20, 12, 0, 3, 7, 3,
-        0, 1, 11, 8, 12, 0, 4, 0, 2, 36,
-        65, 33, 60, 40, 7, 4, 8, 5, 8, 8,
-        17, 8, 4, 8, 79, 6, 33, 9, 9, 9,
-        7, 3, 2, 7, 5, 10, 9, 7, 5, 2,
-        3, 9, 5, 17, 7, 4, 28, 12, 7, 5,
-        4
-    ]
+    # Check that the number of starting-value rows matches
+    # the number of spare parts in the input file.
+    if len(starting_values) != len(P):
+        raise ValueError(
+            f"Expected {len(starting_values)} items from starting values, "
+            f"but found {len(P)} items in the input data."
+        )
 
-    #making the stock level parameter
+    # Initialize inventory levels
     s_ij = {}
 
-    for i in P:
+    for item_index, i in enumerate(P):
         for j in L:
-            s_ij[(i, j)] = 0
+            s_ij[(i, j)] = starting_values[item_index][j]
 
-    #for i, stock in zip(P, depot_stock):
-    #    s_ij[(i, 0)] = stock
-
-    #for i, stock in zip(P, base2_stock):
-    #    s_ij[(i, 2)] = stock
 
     
 #calculate the Expected Back Orders with zero stock
@@ -462,7 +523,16 @@ def run_metric_model_vari_new(df_data):
     #define parameters for optimization
     DeltaEBO = {}
     Efficiency = {}
-    TotalCost = 0
+
+    # Calculate inventory investment already used by the starting solution
+    TotalCost = sum(
+        s_ij[(i, j)] * cost_part[i]
+        for i in P
+        for j in L
+    )
+
+    print(f"Starting inventory cost: €{TotalCost:,.2f}")
+    print(f"Remaining optimization budget: €{C - TotalCost:,.2f}")
 
     #WHILE budget not exhausted:
     while True:

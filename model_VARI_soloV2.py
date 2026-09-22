@@ -38,10 +38,10 @@ def run_metric_model_vari_solo_V2(df_data):
 
     #Transportation lead time data:
     O_j = {
-        1: 0.0027, #this is virtual hub in Rijssen
-        2: 0.1346, #this is VUSA
-        3: 0.0110, #this is the regional hub in UK
-        4: 0.1346  #this is the regional hub in UAE
+        1: 0.00137, #this is virtual hub in Rijssen
+        2: 0.0673, #this is VUSA
+        3: 0.0055, #this is the regional hub in UK
+        4: 0.0673  #this is the regional hub in UAE
     }
 
     #Lead time variance
