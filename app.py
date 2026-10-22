@@ -5,6 +5,7 @@ from model import run_metric_model
 from model_VARI import run_metric_model_vari
 from model_VARI_solo import run_metric_model_vari_solo
 from model_VARI_new import run_metric_model_vari_new
+from Final_model import run_metric_model_final
 from model_VARI_soloV2 import run_metric_model_vari_solo_V2
 from model_VARI_convex import run_metric_model_vari_convex
 from model_current_sit import run_metric_model_current_sit
@@ -57,7 +58,7 @@ if uploaded_file is not None:
 
     if st.button("Run METRIC Calculation"):
 
-        results = run_metric_model_vari_new(df_data)
+        results = run_metric_model_final(df_data)
 
         # ---------------------------------------------------
         # GENERAL RESULTS
@@ -95,39 +96,25 @@ if uploaded_file is not None:
         base_results = []
 
         for j in range(results["J"]):
-
-            # Total EBO at location j
             total_ebo_base = sum(
                 results["EBO_ij"][(i, j)]
                 for i in results["demand"].keys()
             )
-
-            # Average supply availability at location j
-            # Consistent with the availability logic currently used in the model
-            availability_values = [
-                max(0.0, 1 - results["EBO_ij"][(i, j)])
-                for i in results["demand"].keys()
-            ]
-
-            avg_supply_availability_base = (
-                sum(availability_values) / len(availability_values)
-            )
-
-            base_results.append(
-                {
-                    "Hub": j,
-                    "Location": location_names[j],
-                    "Total EBO": total_ebo_base,
-                    "Average Supply Availability": avg_supply_availability_base
-                }
-            )
+            system_availability = results["SystemAvailability_j"].get(j)
+            
+            base_results.append({
+                "Hub": j,
+                "Location": location_names[j],
+                "Total EBO": total_ebo_base,
+                "System Availability": system_availability
+            })
 
         base_results_df = pd.DataFrame(base_results)
 
         st.dataframe(
             base_results_df.style.format({
                 "Total EBO": "{:.3f}",
-                "Average Supply Availability": "{:.2%}"
+                "System Availability": "{:.2%}"
             })
         )
 
@@ -144,9 +131,10 @@ if uploaded_file is not None:
             )
 
             col2.metric(
-                "Supply Availability",
-                f"{row['Average Supply Availability']:.2%}"
+                "System Availability",
+                f"{row['System Availability']:.2%}" if pd.notna(row["System Availability"]) else "N/A"
             )
+
 
             
         # ---------------------------------------------------
@@ -165,7 +153,6 @@ if uploaded_file is not None:
                     results["mu_ij"].get((i, j), None),
                     results["EBO_ij"][(i, j)],
                     results["EBO_reduction"].get((i, j), None),
-                    results["var_ij"][(i, j)],
                     results["theta_ij"].get((i, j), None),
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
@@ -178,13 +165,12 @@ if uploaded_file is not None:
                 "mu_ij",
                 "EBO_ij",
                 "reduction",
-                "var_ij",
                 "theta_ij"
             ]
         )
 
         hub_df["Cost per part"] = hub_df["Material"].map(results["cost"])
-        hub_df["availability"] = hub_df["Material"].map(results["SupplyAvailability"])
+        hub_df["Z_i"] = hub_df["Material"].map(results["Z_i"])
         hub_df["Group"] = hub_df["Material"].map(results["group_part"])
         hub_df["Weight"] = hub_df["Material"].map(results["weight_part"])
 
