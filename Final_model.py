@@ -2,8 +2,6 @@ from scipy.stats import poisson
 
 import pandas as pd
 
-
-
 def run_metric_model_final(df_data):
 
 #-------------------------------------------------------------------
@@ -52,19 +50,19 @@ def run_metric_model_final(df_data):
 
     }
 
-    #Transportation lead time data: 
+    #Transportation lead time data:
 
-    O_j = {  
+    O_j = {
 
-        1: 0.0027, #this is virtual hub in Rijssen 
+        1: 0.0027, #this is virtual hub in Rijssen
 
-        2: 0.1346, #this is VUSA 
+        2: 0.1346, #this is VUSA
 
-        3: 0.0110, #this is the regional hub in UK 
+        3: 0.0110, #this is the regional hub in UK
 
-        4: 0.1346  #this is the regional hub in UAE 
+        4: 0.1346  #this is the regional hub in UAE
 
-    } 
+    }
 
     #Emergency shipment lead time data:
 
@@ -90,11 +88,9 @@ def run_metric_model_final(df_data):
 
         3: 59.09, #this is the regional hub in UK
 
-        4: 223.68  #this is the regional hub in UAE 
+        4: 223.68  #this is the regional hub in UAE
 
     }
-
-
 
 #-------------------------------------------------------------------
 
@@ -121,18 +117,26 @@ def run_metric_model_final(df_data):
     P = part_df["Material description"].tolist()
 
     # Number of occurrences of each spare part in one machine.
+
     # The Excel column must be named Z_i.
+
     if "Z_i" not in part_df.columns:
+
         raise ValueError("Missing required column 'Z_i' in 'Total inventory costs'.")
+
     z_values = pd.to_numeric(part_df["Z_i"], errors="coerce")
+
     if z_values.isna().any() or (z_values <= 0).any() or (z_values % 1 != 0).any():
+
         raise ValueError("All Z_i values must be positive whole numbers.")
+
     Z_i = dict(zip(P, z_values.astype(int)))
 
     # Installed machines supported by each base (NOT the central depot).
-    # Check these counts against the installed-base data before using results.
-    N_j = {1: 26, 2: 187, 3: 13, 4: 8}
 
+    # Check these counts against the installed-base data before using results.
+
+    N_j = {1: 26, 2: 187, 3: 13, 4: 8}
 
     # Number of spare parts
 
@@ -158,7 +162,7 @@ def run_metric_model_final(df_data):
 
     #demand parameter lambda
 
-    lambda_part = {}   
+    lambda_part = {}
 
     #for loop looping over all indivdual parts
 
@@ -219,7 +223,6 @@ def run_metric_model_final(df_data):
             return 1.00
 
     # ---------------------------------------------------
-
 
 #Assigning costs to the parts:
 
@@ -419,6 +422,42 @@ def run_metric_model_final(df_data):
 
     # Initialize inventory levels
 
+    #Initializing the inventory levels and setting them to zero
+
+    depot_stock = [
+
+        17, 21, 2, 2, 9, 4, 17, 37, 55, 26,
+
+        10, 14, 76, 22, 4, 11, 12, 19, 5, 55,
+
+        53, 50, 60, 83, 65, 1, 4, 12, 4, 54,
+
+        18, 24, 10, 27, 92, 101, 1, 19, 12, 18,
+
+        83, 45, 32, 22, 127, 62, 76, 56, 5, 43,
+
+        26, 5, 6, 12, 5, 9, 81, 10, 73, 6, 4, 1
+
+    ]
+
+    base2_stock = [
+
+        3, 3, 2, 1, 20, 12, 0, 3, 7, 3,
+
+        0, 1, 11, 8, 12, 0, 4, 0, 2, 36,
+
+        65, 33, 60, 40, 7, 4, 8, 5, 8, 8,
+
+        17, 8, 4, 8, 79, 6, 33, 9, 9, 9,
+
+        7, 3, 2, 7, 5, 10, 9, 7, 5, 2,
+
+        3, 9, 5, 17, 7, 4, 28, 12, 7, 5,
+
+        4, 1
+
+    ]
+
     s_ij = {}
 
     for item_index, i in enumerate(P):
@@ -426,6 +465,20 @@ def run_metric_model_final(df_data):
         for j in L:
 
             s_ij[(i, j)] = starting_values[item_index][j]
+
+    #for i in P:
+
+    #    for j in L:
+
+    #        s_ij[(i, j)] = 0
+
+    #for i, stock in zip(P, depot_stock):
+
+    #    s_ij[(i, 0)] = stock
+
+    #for i, stock in zip(P, base2_stock):
+
+    #    s_ij[(i, 2)] = stock
 
 #calculate the Expected Back Orders with zero stock
 
@@ -455,8 +508,6 @@ def run_metric_model_final(df_data):
 
         EBO_i0[i] = ebo_exact(mu_i0[i], s_ij[(i, 0)])
 
-
-
 #-------------------------------------------------------------------
 
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
@@ -464,52 +515,81 @@ def run_metric_model_final(df_data):
 #-------------------------------------------------------------------
 
     # Calculate Poisson pipeline means and emergency shipment fractions.
+
     def compute_mu_ij():
+
         mu_ij = {}
+
         theta_ij = {}
 
         for i in P:
+
             mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_i0[i]
+
             depot_ebo = ebo_exact(mu_ij[(i, 0)], s_ij[(i, 0)])
 
             if lambda_ij[(i, 0)] > 0:
+
                 depot_fill_rate = max(0, 1 - depot_ebo / lambda_ij[(i, 0)])
+
             else:
+
                 depot_fill_rate = 0
 
             for j in L:
+
                 if j == 0:
+
                     continue
 
                 if lambda_ij[(i, 0)] == 0:
+
                     mu_ij[(i, j)] = 0
+
                     theta_ij[(i, j)] = 0
+
                     continue
 
                 # Regular replenishment lead time includes expected depot waiting.
+
                 waiting_time = depot_ebo / lambda_ij[(i, 0)]
+
                 regular_lead_time = O_j[j] + waiting_time
 
                 # Base stockout probability and emergency fraction.
+
                 mu_regular = lambda_ij[(i, j)] * regular_lead_time
+
                 base_stockout_prob = 1 - poisson.cdf(s_ij[(i, j)], mu_regular)
+
                 theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate
 
                 # Split demand into regular and emergency pipelines.
+
                 lambda_em = theta_ij[(i, j)] * lambda_ij[(i, j)]
+
                 lambda_reg = (1 - theta_ij[(i, j)]) * lambda_ij[(i, j)]
+
                 mu_em = lambda_em * E_j[j]
+
                 mu_reg = lambda_reg * regular_lead_time
+
                 mu_ij[(i, j)] = mu_em + mu_reg
 
         return mu_ij, theta_ij
 
     # Exact Poisson EBO for depot and bases.
+
     def compute_EBO(mu_ij):
+
         EBO_ij = {}
+
         for i in P:
+
             for j in L:
+
                 EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
+
         return EBO_ij
 
 #7. CALCULATE EXPECTED BACKORDERS REDUCTION
@@ -519,8 +599,11 @@ def run_metric_model_final(df_data):
     #making a simple function that calculates the reduction
 
     def ebo_reduction(mu, s):
+
         current = ebo_exact(mu, s)
+
         future = ebo_exact(mu, s + 1)
+
         return max(0.0, current - future)
 
 #9. OPTIMIZATION PROCEDURE
@@ -571,7 +654,7 @@ def run_metric_model_final(df_data):
 
             #looping over all the bases j
 
-            for j in L:            
+            for j in L:
 
                 #calculate the ebo reduction
 
@@ -599,7 +682,7 @@ def run_metric_model_final(df_data):
 
                 Efficiency[(i, j)] = (
 
-                    (DeltaEBO[(i, j)] 
+                    (DeltaEBO[(i, j)]
 
                     * urgency_weight)
 
@@ -655,21 +738,80 @@ def run_metric_model_final(df_data):
 
         SupplyAvailability[i] = 1 - total_ebo
 
-    # Sherbrooke METRIC system availability by base.
-    # A_j = product_i (1 - EBO_ij / (N_j * Z_i)) ** Z_i
-    SystemAvailability_j = {}
-    for j, n_machines in N_j.items():
-        availability = 1.0
+    # ---------------------------------------------------
+    # DEMAND-WEIGHTED LOCAL SUPPLY AVAILABILITY
+    # ---------------------------------------------------
+    # Probability that a request is fulfilled immediately from local stock.
+    # Use the REGULAR replenishment pipeline (before emergency shipments).
+    # Emergency shipments are NOT counted as immediate local fulfillment.
+    FillRate_ij = {}
+    SupplyAvailability_j = {}
+
+    for j in L:
+        if j == 0:
+            continue
+
+        total_demand = 0.0
+        immediate_demand = 0.0
+
         for i in P:
-            component_availability = max(
-                0.0, 1.0 - EBO_ij[(i, j)] / (n_machines * Z_i[i])
+            demand = lambda_ij[(i, j)]
+            stock = s_ij[(i, j)]
+            depot_demand = lambda_ij[(i, 0)]
+            depot_wait = (
+                EBO_ij[(i, 0)] / depot_demand
+                if depot_demand > 0 else 0.0
             )
+            mu_regular = demand * (O_j[j] + depot_wait)
+            local_fill_rate = float(poisson.cdf(stock - 1, mu_regular))
+
+            FillRate_ij[(i, j)] = local_fill_rate
+            total_demand += demand
+            immediate_demand += demand * local_fill_rate
+
+        SupplyAvailability_j[j] = (
+            immediate_demand / total_demand if total_demand > 0 else None
+        )
+
+    total_base_demand = sum(
+        lambda_ij[(i, j)] for i in P for j in L if j != 0
+    )
+    TotalSupplyAvailability = (
+        sum(
+            lambda_ij[(i, j)] * FillRate_ij[(i, j)]
+            for i in P for j in L if j != 0
+        ) / total_base_demand
+        if total_base_demand > 0 else None
+    )
+
+    # Sherbrooke METRIC system availability by base.
+
+    # A_j = product_i (1 - EBO_ij / (N_j * Z_i)) ** Z_i
+
+    SystemAvailability_j = {}
+
+    for j, n_machines in N_j.items():
+
+        availability = 1.0
+
+        for i in P:
+
+            component_availability = max(
+
+                0.0, 1.0 - EBO_ij[(i, j)] / (n_machines * Z_i[i])
+
+            )
+
             availability *= component_availability ** Z_i[i]
+
         SystemAvailability_j[j] = availability
 
     TotalSystemAvailability = (
+
         sum(N_j[j] * SystemAvailability_j[j] for j in N_j)
+
         / sum(N_j.values())
+
     )
 
     TotalEBO_bases = sum(
@@ -769,15 +911,21 @@ def run_metric_model_final(df_data):
         "TotalCost": TotalCost,
 
         "SupplyAvailability": SupplyAvailability,  # legacy item-level metric
+
         "Z_i": Z_i,
+
         "N_j": N_j,
+
+        "FillRate_ij": FillRate_ij,
+        "SupplyAvailability_j": SupplyAvailability_j,
+        "TotalSupplyAvailability": TotalSupplyAvailability,
         "SystemAvailability_j": SystemAvailability_j,
+
         "TotalSystemAvailability": TotalSystemAvailability,
 
         "theta_ij": theta_ij,
 
         "emergencycost": TotalEmergencyCost,
-
 
         "TotalEBO_bases": TotalEBO_bases,
 

@@ -192,7 +192,7 @@ def run_metric_model_vari_solo_V2(df_data):
         17, 8, 4, 8, 79, 6, 33, 9, 9, 9,
         7, 3, 2, 7, 5, 10, 9, 7, 5, 2,
         3, 9, 5, 17, 7, 4, 28, 12, 7, 5,
-        4
+        4, 1
     ]
 
     #making the stock level parameter

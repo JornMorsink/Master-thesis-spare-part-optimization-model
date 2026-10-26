@@ -76,8 +76,8 @@ if uploaded_file is not None:
         st.write(f"#### Average emergency: {results['emergency']}")
 
         st.metric(
-            "Average Supply Availability",
-            f"{sum(results['SupplyAvailability'].values()) / len(results['SupplyAvailability']):.2%}"
+            "Total Supply Availability",
+            f"{results['TotalSupplyAvailability']:.2%}"
         )
         # ---------------------------------------------------
         # RESULTS PER BASE
@@ -101,12 +101,14 @@ if uploaded_file is not None:
                 for i in results["demand"].keys()
             )
             system_availability = results["SystemAvailability_j"].get(j)
-            
+            supply_availability = results["SupplyAvailability_j"].get(j)
+
             base_results.append({
                 "Hub": j,
                 "Location": location_names[j],
                 "Total EBO": total_ebo_base,
-                "System Availability": system_availability
+                "System Availability": system_availability,
+                "Supply Availability": supply_availability
             })
 
         base_results_df = pd.DataFrame(base_results)
@@ -114,7 +116,8 @@ if uploaded_file is not None:
         st.dataframe(
             base_results_df.style.format({
                 "Total EBO": "{:.3f}",
-                "System Availability": "{:.2%}"
+                "System Availability": "{:.2%}",
+                "Supply Availability": "{:.2%}"
             })
         )
 
@@ -123,7 +126,7 @@ if uploaded_file is not None:
 
             st.subheader(row["Location"])
 
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
 
             col1.metric(
                 "Total EBO",
@@ -132,9 +135,15 @@ if uploaded_file is not None:
 
             col2.metric(
                 "System Availability",
-                f"{row['System Availability']:.2%}" if pd.notna(row["System Availability"]) else "N/A"
+                f"{row['System Availability']:.2%}"
+                if pd.notna(row["System Availability"]) else "N/A"
             )
 
+            col3.metric(
+                "Supply Availability",
+                f"{row['Supply Availability']:.2%}"
+                if pd.notna(row["Supply Availability"]) else "N/A"
+            )
 
             
         # ---------------------------------------------------
@@ -174,4 +183,17 @@ if uploaded_file is not None:
         hub_df["Group"] = hub_df["Material"].map(results["group_part"])
         hub_df["Weight"] = hub_df["Material"].map(results["weight_part"])
 
-        st.dataframe(hub_df)
+        # Add individual spare-part fill rates
+        hub_df["Fill Rate"] = hub_df.apply(
+            lambda row: results["FillRate_ij"].get(
+                (row["Material"], row["Hub"])
+            ),
+            axis=1
+        )
+
+        st.dataframe(
+            hub_df.style.format({
+                "Fill Rate": "{:.2%}"
+            }),
+            use_container_width=True
+        )

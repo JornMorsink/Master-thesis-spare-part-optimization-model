@@ -391,7 +391,7 @@ def run_metric_model_vari(df_data):
                 mu_regular = lambda_ij[(i, j)] * regular_lead_time
 
                 base_stockout_prob = 1 - poisson.cdf(
-                    s_ij[(i, j)],
+                    s_ij[(i, j)] - 1,
                     mu_regular
                 )
 
