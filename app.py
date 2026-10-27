@@ -74,12 +74,11 @@ if uploaded_file is not None:
         st.write(f"#### Total emergency costs: {results['emergencycost']}")
         st.write(f"#### Total EBO bases: {results['TotalEBO_bases']}")
         st.write(f"#### Average emergency: {results['emergency']}")
-
-        st.metric(
-            "Total Supply Availability",
-            f"{results['TotalSupplyAvailability']:.2%}"
+        st.write(
+            f"#### Total Average Fill Rate: "
+            f"{results['TotalAverageFillRate']:.3%}"
         )
-        # ---------------------------------------------------
+                # ---------------------------------------------------
         # RESULTS PER BASE
         # ---------------------------------------------------
 
@@ -94,56 +93,46 @@ if uploaded_file is not None:
         }
 
         base_results = []
-
         for j in range(results["J"]):
             total_ebo_base = sum(
                 results["EBO_ij"][(i, j)]
                 for i in results["demand"].keys()
             )
             system_availability = results["SystemAvailability_j"].get(j)
-            supply_availability = results["SupplyAvailability_j"].get(j)
-
+            average_fill_rate = results["AverageFillRate_j"].get(j)
             base_results.append({
                 "Hub": j,
                 "Location": location_names[j],
                 "Total EBO": total_ebo_base,
                 "System Availability": system_availability,
-                "Supply Availability": supply_availability
+                "Average Fill Rate": average_fill_rate
             })
-
         base_results_df = pd.DataFrame(base_results)
-
         st.dataframe(
             base_results_df.style.format({
-                "Total EBO": "{:.3f}",
-                "System Availability": "{:.2%}",
-                "Supply Availability": "{:.2%}"
-            })
+                "Total EBO": "{:.6f}",
+                "System Availability": "{:.3%}",
+                "Average Fill Rate": "{:.3%}"
+            }, na_rep="N/A")
         )
-
-
         for _, row in base_results_df.iterrows():
-
             st.subheader(row["Location"])
-
             col1, col2, col3 = st.columns(3)
-
             col1.metric(
                 "Total EBO",
-                f"{row['Total EBO']:.3f}"
+                f"{row['Total EBO']:.6f}"
             )
-
             col2.metric(
                 "System Availability",
-                f"{row['System Availability']:.2%}"
+                f"{row['System Availability']:.3%}"
                 if pd.notna(row["System Availability"]) else "N/A"
             )
-
             col3.metric(
-                "Supply Availability",
-                f"{row['Supply Availability']:.2%}"
-                if pd.notna(row["Supply Availability"]) else "N/A"
+                "Average Fill Rate",
+                f"{row['Average Fill Rate']:.3%}"
+                if pd.notna(row["Average Fill Rate"]) else "N/A"
             )
+
 
             
         # ---------------------------------------------------
@@ -163,6 +152,7 @@ if uploaded_file is not None:
                     results["EBO_ij"][(i, j)],
                     results["EBO_reduction"].get((i, j), None),
                     results["theta_ij"].get((i, j), None),
+                    results["FillRate_ij"].get((i, j), None),
                 ]
                 for (i, j), demand in results["lambda_ij"].items()
             ],
@@ -174,7 +164,8 @@ if uploaded_file is not None:
                 "mu_ij",
                 "EBO_ij",
                 "reduction",
-                "theta_ij"
+                "theta_ij",
+                "Fill Rate"
             ]
         )
 
@@ -183,17 +174,11 @@ if uploaded_file is not None:
         hub_df["Group"] = hub_df["Material"].map(results["group_part"])
         hub_df["Weight"] = hub_df["Material"].map(results["weight_part"])
 
-        # Add individual spare-part fill rates
-        hub_df["Fill Rate"] = hub_df.apply(
-            lambda row: results["FillRate_ij"].get(
-                (row["Material"], row["Hub"])
-            ),
-            axis=1
-        )
-
         st.dataframe(
             hub_df.style.format({
-                "Fill Rate": "{:.2%}"
-            }),
-            use_container_width=True
+                "Demand": "{:.3f}",
+                "mu_ij": "{:.6f}",
+                "EBO_ij": "{:.6f}",
+                "Fill Rate": "{:.3%}"
+            }, na_rep="N/A")
         )

@@ -40,13 +40,13 @@ def run_metric_model_final(df_data):
 
         0: 1,               #this is VSM
 
-        1: 0.1111,          #this is virtual hub in Rijssen
+        1: 0.2009,          #this is virtual hub in Rijssen
 
         2: 0.7991,          #this is VUSA
 
-        3: 0.0556,          #this is the regional hub in UK
+        3: 0.0,          #this is the regional hub in UK
 
-        4: 0.0342          #this is the regional hub in UAE
+        4: 0.0          #this is the regional hub in UAE
 
     }
 
@@ -460,25 +460,25 @@ def run_metric_model_final(df_data):
 
     s_ij = {}
 
-    for item_index, i in enumerate(P):
-
-        for j in L:
-
-            s_ij[(i, j)] = starting_values[item_index][j]
-
-    #for i in P:
+    #for item_index, i in enumerate(P):
 
     #    for j in L:
 
-    #        s_ij[(i, j)] = 0
+    #        s_ij[(i, j)] = starting_values[item_index][j]
 
-    #for i, stock in zip(P, depot_stock):
+    for i in P:
 
-    #    s_ij[(i, 0)] = stock
+        for j in L:
 
-    #for i, stock in zip(P, base2_stock):
+            s_ij[(i, j)] = 0
 
-    #    s_ij[(i, 2)] = stock
+    for i, stock in zip(P, depot_stock):
+
+        s_ij[(i, 0)] = stock
+
+    for i, stock in zip(P, base2_stock):
+
+        s_ij[(i, 2)] = stock
 
 #calculate the Expected Back Orders with zero stock
 
@@ -530,7 +530,7 @@ def run_metric_model_final(df_data):
 
             if lambda_ij[(i, 0)] > 0:
 
-                depot_fill_rate = max(0, 1 - depot_ebo / lambda_ij[(i, 0)])
+                depot_fill_rate = poisson.cdf(s_ij[(i, 0)] - 1, mu_ij[(i, 0)])
 
             else:
 
@@ -560,7 +560,7 @@ def run_metric_model_final(df_data):
 
                 mu_regular = lambda_ij[(i, j)] * regular_lead_time
 
-                base_stockout_prob = 1 - poisson.cdf(s_ij[(i, j)], mu_regular)
+                base_stockout_prob = 1 - poisson.cdf(s_ij[(i, j)] - 1, mu_regular)
 
                 theta_ij[(i, j)] = base_stockout_prob * depot_fill_rate
 
@@ -721,66 +721,23 @@ def run_metric_model_final(df_data):
 # FILL RATE (FINAL STATE)
 
 # ---------------------------------------------------
-
-    SupplyAvailability = {}
-
-    for i in P:
-
-        total_ebo = 0
-
-        for j in L:
-
-            if j == 0:
-
-                continue  # exclude depot
-
-            total_ebo += EBO_ij[(i, j)]
-
-        SupplyAvailability[i] = 1 - total_ebo
-
-    # ---------------------------------------------------
-    # DEMAND-WEIGHTED LOCAL SUPPLY AVAILABILITY
-    # ---------------------------------------------------
-    # Probability that a request is fulfilled immediately from local stock.
-    # Use the REGULAR replenishment pipeline (before emergency shipments).
-    # Emergency shipments are NOT counted as immediate local fulfillment.
+    # Item-location fill rates from the final optimized pipeline and stock levels.
+    # P(Poisson pipeline demand <= stock - 1) is the local immediate fill rate.
     FillRate_ij = {}
-    SupplyAvailability_j = {}
-
+    for i in P:
+        for j in L:
+            FillRate_ij[(i, j)] = float(poisson.cdf(s_ij[(i, j)] - 1, mu_ij[(i, j)])) if lambda_ij[(i, j)] > 0 else None
+    # Demand-weighted fill rate: fraction of demand fulfilled directly from local stock.
+    AverageFillRate_j = {}
     for j in L:
-        if j == 0:
-            continue
-
-        total_demand = 0.0
-        immediate_demand = 0.0
-
-        for i in P:
-            demand = lambda_ij[(i, j)]
-            stock = s_ij[(i, j)]
-            depot_demand = lambda_ij[(i, 0)]
-            depot_wait = (
-                EBO_ij[(i, 0)] / depot_demand
-                if depot_demand > 0 else 0.0
-            )
-            mu_regular = demand * (O_j[j] + depot_wait)
-            local_fill_rate = float(poisson.cdf(stock - 1, mu_regular))
-
-            FillRate_ij[(i, j)] = local_fill_rate
-            total_demand += demand
-            immediate_demand += demand * local_fill_rate
-
-        SupplyAvailability_j[j] = (
-            immediate_demand / total_demand if total_demand > 0 else None
+        total_demand_j = sum(lambda_ij[(i, j)] for i in P)
+        AverageFillRate_j[j] = (
+            sum(lambda_ij[(i, j)] * FillRate_ij[(i, j)] for i in P if FillRate_ij[(i, j)] is not None) / total_demand_j
+            if total_demand_j > 0 else None
         )
-
-    total_base_demand = sum(
-        lambda_ij[(i, j)] for i in P for j in L if j != 0
-    )
-    TotalSupplyAvailability = (
-        sum(
-            lambda_ij[(i, j)] * FillRate_ij[(i, j)]
-            for i in P for j in L if j != 0
-        ) / total_base_demand
+    total_base_demand = sum(lambda_ij[(i, j)] for i in P for j in L if j != 0)
+    TotalAverageFillRate = (
+        sum(lambda_ij[(i, j)] * FillRate_ij[(i, j)] for i in P for j in L if j != 0 and FillRate_ij[(i, j)] is not None) / total_base_demand
         if total_base_demand > 0 else None
     )
 
@@ -910,16 +867,17 @@ def run_metric_model_final(df_data):
 
         "TotalCost": TotalCost,
 
-        "SupplyAvailability": SupplyAvailability,  # legacy item-level metric
-
         "Z_i": Z_i,
 
         "N_j": N_j,
 
-        "FillRate_ij": FillRate_ij,
-        "SupplyAvailability_j": SupplyAvailability_j,
-        "TotalSupplyAvailability": TotalSupplyAvailability,
         "SystemAvailability_j": SystemAvailability_j,
+
+        "FillRate_ij": FillRate_ij,
+
+        "AverageFillRate_j": AverageFillRate_j,
+
+        "TotalAverageFillRate": TotalAverageFillRate,
 
         "TotalSystemAvailability": TotalSystemAvailability,
 
