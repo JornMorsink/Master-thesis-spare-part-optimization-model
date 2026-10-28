@@ -18,7 +18,7 @@ def run_metric_model_final(df_data):
 
     #budget constraint
 
-    C = 426000
+    C = 15000
 
 #-------------------------------------------------------------------
 
@@ -40,13 +40,13 @@ def run_metric_model_final(df_data):
 
         0: 1,               #this is VSM
 
-        1: 0.2009,          #this is virtual hub in Rijssen
+        1: 0.1111,          #this is virtual hub in Rijssen
 
         2: 0.7991,          #this is VUSA
 
-        3: 0.0,          #this is the regional hub in UK
+        3: 0.0556,          #this is the regional hub in UK
 
-        4: 0.0          #this is the regional hub in UAE
+        4: 0.0342          #this is the regional hub in UAE
 
     }
 
@@ -410,15 +410,15 @@ def run_metric_model_final(df_data):
 
     # the number of spare parts in the input file.
 
-    if len(starting_values) != len(P):
+    #if len(starting_values) != len(P):
 
-        raise ValueError(
+    #    raise ValueError(
 
-            f"Expected {len(starting_values)} items from starting values, "
+    #        f"Expected {len(starting_values)} items from starting values, "
 
-            f"but found {len(P)} items in the input data."
+    #        f"but found {len(P)} items in the input data."
 
-        )
+    #    )
 
     # Initialize inventory levels
 
@@ -472,13 +472,13 @@ def run_metric_model_final(df_data):
 
             s_ij[(i, j)] = 0
 
-    for i, stock in zip(P, depot_stock):
+    #for i, stock in zip(P, depot_stock):
 
-        s_ij[(i, 0)] = stock
+    #    s_ij[(i, 0)] = stock
 
-    for i, stock in zip(P, base2_stock):
+    #for i, stock in zip(P, base2_stock):
 
-        s_ij[(i, 2)] = stock
+    #    s_ij[(i, 2)] = stock
 
 #calculate the Expected Back Orders with zero stock
 
@@ -656,8 +656,11 @@ def run_metric_model_final(df_data):
 
             for j in L:
 
-                #calculate the ebo reduction
+                # Skip products that exceed the remaining budget
+                if TotalCost + cost_part[i] > C:
+                    continue
 
+                #calculate the ebo reduction
                 DeltaEBO[(i, j)] = ebo_reduction(mu_ij[(i, j)], s_ij[(i, j)])
 
                 #calculate the efficiency:
@@ -690,7 +693,7 @@ def run_metric_model_final(df_data):
 
                 )
 
-                if Efficiency[(i, j)] > best_eff:
+                if Efficiency[(i, j)] > best_eff and DeltaEBO[(i, j)] > 1e-12:
 
                     best_eff = Efficiency[(i, j)]
 
@@ -698,10 +701,8 @@ def run_metric_model_final(df_data):
 
                     best_j = j
 
-        #stop if the costs goes over the budget
-
-        if TotalCost + cost_part[best_i] > C:
-
+        # Stop only when no affordable inventory additions remain
+        if best_i is None:
             break
 
         #Allocate one stock unit to the best place
