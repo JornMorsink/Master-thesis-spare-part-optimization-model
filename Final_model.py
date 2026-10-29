@@ -19,10 +19,10 @@ def run_metric_model_final(df_data):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.1111,          #this is virtual hub in Rijssen
+        1: 0.2009,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
-        3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342          #this is the regional hub in UAE
+        3: 0.0,          #this is the regional hub in UK
+        4: 0.0          #this is the regional hub in UAE
     }
     #Transportation lead time data:
     O_j = {
@@ -229,16 +229,22 @@ def run_metric_model_final(df_data):
         4, 1
     ]
     s_ij = {}
+
+
     for item_index, i in enumerate(P):
         for j in L:
             s_ij[(i, j)] = starting_values[item_index][j]
+
     #for i in P:
     #    for j in L:
     #        s_ij[(i, j)] = 0
+
     #for i, stock in zip(P, depot_stock):
     #    s_ij[(i, 0)] = stock
+
     #for i, stock in zip(P, base2_stock):
     #    s_ij[(i, 2)] = stock
+
 #calculate the Expected Back Orders with zero stock
     #making the mu parameter which represents the demand during lead time
     mu_i0 = {}
