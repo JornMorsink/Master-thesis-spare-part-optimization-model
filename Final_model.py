@@ -355,10 +355,15 @@ def run_metric_model_final(df_data):
             candidate_stock = current_stock.copy()
             candidate_stock[j] += 1
             candidate_wait = evaluate_item_waiting_time(i, candidate_stock)
+            # Marginal reduction in TOTAL demand-weighted waiting time.
+            # A depot increment affects all bases; a base increment affects only that base.
             if j == 0:
-                reduction = sum(current_wait[k] - candidate_wait[k] for k in L if k != 0)
+                reduction = sum(
+                    lambda_ij[(i, k)] * (current_wait[k] - candidate_wait[k])
+                    for k in L if k != 0
+                )
             else:
-                reduction = current_wait[j] - candidate_wait[j]
+                reduction = lambda_ij[(i, j)] * (current_wait[j] - candidate_wait[j])
             DeltaWaitingTime[(i, j)] = reduction
             efficiency = (reduction * urgency_weight / cost_part[i]) if cost_part[i] > 0 else 0.0
             Efficiency[(i, j)] = efficiency
@@ -378,6 +383,8 @@ def run_metric_model_final(df_data):
     # Compute final values once, rather than after every inventory increment.
     mu_ij, theta_ij = compute_mu_ij()
     EBO_ij = compute_EBO(mu_ij)
+    # Keep the depot-only EBO output consistent with the FINAL optimized stock.
+    EBO_i0 = {i: EBO_ij[(i, 0)] for i in P}
 # ---------------------------------------------------
 # FILL RATE (FINAL STATE)
 # ---------------------------------------------------
@@ -406,6 +413,20 @@ def run_metric_model_final(df_data):
                                    for i in P for j in L if j != 0)
     TotalBaseDemand = sum(lambda_ij[(i, j)] for i in P for j in L if j != 0)
     AverageWaitingTime = TotalWeightedWaitingTime / TotalBaseDemand if TotalBaseDemand > 0 else 0.0
+    # Detailed demand-weighted waiting time (years of waiting per year of demand).
+    WeightedWaitingTime_ij = {
+        (i, j): lambda_ij[(i, j)] * WaitingTime_ij[(i, j)]
+        for i in P for j in L if j != 0
+    }
+    TotalWeightedWaitingTime_j = {
+        j: sum(WeightedWaitingTime_ij[(i, j)] for i in P)
+        for j in L if j != 0
+    }
+    AverageWaitingTime_j = {
+        j: (TotalWeightedWaitingTime_j[j] / sum(lambda_ij[(i, j)] for i in P)
+            if sum(lambda_ij[(i, j)] for i in P) > 0 else 0.0)
+        for j in L if j != 0
+    }
     # Sherbrooke METRIC system availability by base.
     # A_j = product_i (1 - EBO_ij / (N_j * Z_i)) ** Z_i
     SystemAvailability_j = {}
@@ -466,7 +487,11 @@ def run_metric_model_final(df_data):
         "EBO_i0": EBO_i0,
         "mu_ij": mu_ij,
         "EBO_ij": EBO_ij,
-        "WaitingTime_reduction": DeltaWaitingTime,
+        "WaitingTime_reduction": DeltaWaitingTime,  # Now demand-weighted marginal reduction
+        "WeightedWaitingTime_reduction": DeltaWaitingTime,
+        "WeightedWaitingTime_ij": WeightedWaitingTime_ij,
+        "TotalWeightedWaitingTime_j": TotalWeightedWaitingTime_j,
+        "AverageWaitingTime_j": AverageWaitingTime_j,
         "WaitingTime_ij": WaitingTime_ij,
         "TotalWeightedWaitingTime": TotalWeightedWaitingTime,
         "AverageWaitingTime": AverageWaitingTime,
