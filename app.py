@@ -46,7 +46,6 @@ if uploaded_file is not None:
         st.write(f"#### Lead time: {results['O_j']}")
         st.write(f"#### Total backorders: {results['total']}")
         st.write(f"#### Total costs: {results['TotalCost']}")
-        st.write(f"#### Total emergency costs: {results['emergencycost']}")
         st.write(f"#### Total EBO bases: {results['TotalEBO_bases']}")
         st.write(f"#### Average emergency: {results['emergency']}")
         st.write(f"#### Average waiting time (years): {results['AverageWaitingTime']:.6f}")
@@ -72,7 +71,7 @@ if uploaded_file is not None:
             4: "Regional hub (UAE)"
         }
         base_results = []
-        for j in range(results["J"]):
+        for j in range(1, results["J"]):
             total_ebo_base = sum(
                 results["EBO_ij"][(i, j)]
                 for i in results["demand"].keys()
