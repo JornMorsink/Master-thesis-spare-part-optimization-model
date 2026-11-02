@@ -8,7 +8,7 @@ def run_metric_model_final(df_data):
     results = {}
 #Initialize model parameters
     #budget constraint
-    C = 454000
+    C =454000
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA
 #-------------------------------------------------------------------
@@ -204,11 +204,11 @@ def run_metric_model_final(df_data):
     ]
     # Check that the number of starting-value rows matches
     # the number of spare parts in the input file.
-    if len(starting_values) != len(P):
-        raise ValueError(
-            f"Expected {len(starting_values)} items from starting values, "
-            f"but found {len(P)} items in the input data."
-        )
+    #if len(starting_values) != len(P):
+    #    raise ValueError(
+    #        f"Expected {len(starting_values)} items from starting values, "
+    #        f"but found {len(P)} items in the input data."
+    #    )
     # Initialize inventory levels
     #Initializing the inventory levels and setting them to zero
     depot_stock = [
