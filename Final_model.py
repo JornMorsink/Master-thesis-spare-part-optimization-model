@@ -1,7 +1,7 @@
 from scipy.stats import poisson
 import pandas as pd
 def run_metric_model_final(df_data):
-#-------------------------------------------------------------------
+#------------------------------------------------------------------
 #1. INITIALIZATION
 #-------------------------------------------------------------------
 #Load required libraries
@@ -22,7 +22,7 @@ def run_metric_model_final(df_data):
         1: 0.1111,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
         3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342          #this is the regional hub in UAE
+        4: 0.0342         #this is the regional hub in UAE
     }
     #Transportation lead time data:
     O_j = {
@@ -65,6 +65,12 @@ def run_metric_model_final(df_data):
     if z_values.isna().any() or (z_values <= 0).any() or (z_values % 1 != 0).any():
         raise ValueError("All Z_i values must be positive whole numbers.")
     Z_i = dict(zip(P, z_values.astype(int)))
+    if "Q_i0" not in part_df.columns:
+        raise ValueError("Missing required column 'Q_i0' in 'Total inventory costs'.")
+    q_values = pd.to_numeric(part_df["Q_i0"], errors="coerce")
+    if q_values.isna().any() or (q_values <= 0).any() or (q_values % 1 != 0).any():
+        raise ValueError("All Q_i0 values must be positive whole numbers.")
+    Q_i0 = dict(zip(P, q_values.astype(int)))
     # Installed machines supported by each base (NOT the central depot).
     # Check these counts against the installed-base data before using results.
     N_j = {1: 26, 2: 187, 3: 13, 4: 8}
@@ -110,7 +116,6 @@ def run_metric_model_final(df_data):
             return 1.00   # normal importance
         else:
             return 1.00
-    # ---------------------------------------------------
 #Assigning costs to the parts:
     #cost parameter
     cost_part = {}
@@ -128,9 +133,6 @@ def run_metric_model_final(df_data):
 #-------------------------------------------------------------------
 #5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
 #-------------------------------------------------------------------
-    # ---------------------------------------------------
-    # INITIAL INVENTORY LEVELS
-    # ---------------------------------------------------
     # Starting values obtained from the convexity analysis.
     # Location indices:
     # 0 = VSM
@@ -229,12 +231,12 @@ def run_metric_model_final(df_data):
         4, 1
     ]
     s_ij = {}
-    for item_index, i in enumerate(P):
-        for j in L:
-            s_ij[(i, j)] = starting_values[item_index][j]
-    #for i in P:
+    #for item_index, i in enumerate(P):
     #    for j in L:
-    #        s_ij[(i, j)] = 0
+    #        s_ij[(i, j)] = starting_values[item_index][j]
+    for i in P:
+        for j in L:
+            s_ij[(i, j)] = 0
     #for i, stock in zip(P, depot_stock):
     #    s_ij[(i, 0)] = stock
     #for i, stock in zip(P, base2_stock):
@@ -251,20 +253,27 @@ def run_metric_model_final(df_data):
         term1 = mu * (1 - poisson.cdf(s - 1, mu))
         term2 = s * (1 - poisson.cdf(s, mu))
         return max(0.0, term1 - term2)
+    def depot_ebo(i, stock):
+        return sum(ebo_exact(mu_i0[i], stock + k) for k in range(1, Q_i0[i] + 1)) / Q_i0[i]
+    def depot_fill_rate(i, stock):
+        if stock <= 0:
+            return 0.0  # No physical depot inventory available for emergency shipments.
+        return sum(poisson.cdf(stock + k - 1, mu_i0[i]) for k in range(1, Q_i0[i] + 1)) / Q_i0[i]
     for i in P:
-        EBO_i0[i] = ebo_exact(mu_i0[i], s_ij[(i, 0)])
+        EBO_i0[i] = depot_ebo(i, s_ij[(i, 0)])
 #-------------------------------------------------------------------
 #6. CALCULATE PIPELINE STOCK + BACKORDERS FOR BASES
 #-------------------------------------------------------------------
     # Calculate Poisson pipeline means and emergency shipment fractions.
+    depot_fill_rate_fn = depot_fill_rate
     def compute_mu_ij():
         mu_ij = {}
         theta_ij = {}
         for i in P:
             mu_ij[(i, 0)] = lambda_ij[(i, 0)] * O_i0[i]
-            depot_ebo = ebo_exact(mu_ij[(i, 0)], s_ij[(i, 0)])
+            depot_ebo_value = depot_ebo(i, s_ij[(i, 0)])
             if lambda_ij[(i, 0)] > 0:
-                depot_fill_rate = poisson.cdf(s_ij[(i, 0)] - 1, mu_ij[(i, 0)])
+                depot_fill_rate = depot_fill_rate_fn(i, s_ij[(i, 0)])
             else:
                 depot_fill_rate = 0
             for j in L:
@@ -275,7 +284,7 @@ def run_metric_model_final(df_data):
                     theta_ij[(i, j)] = 0
                     continue
                 # Regular replenishment lead time includes expected depot waiting.
-                waiting_time = depot_ebo / lambda_ij[(i, 0)]
+                waiting_time = depot_ebo_value / lambda_ij[(i, 0)]
                 regular_lead_time = O_j[j] + waiting_time
                 # Base stockout probability and emergency fraction.
                 mu_regular = lambda_ij[(i, j)] * regular_lead_time
@@ -293,7 +302,7 @@ def run_metric_model_final(df_data):
         EBO_ij = {}
         for i in P:
             for j in L:
-                EBO_ij[(i, j)] = ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
+                EBO_ij[(i, j)] = depot_ebo(i, s_ij[(i, 0)]) if j == 0 else ebo_exact(mu_ij[(i, j)], s_ij[(i, j)])
         return EBO_ij
 #7. CALCULATE Waiting time REDUCTION
 #-------------------------------------------------------------------
@@ -306,12 +315,12 @@ def run_metric_model_final(df_data):
     def evaluate_item_waiting_time(i, stock_levels):
         # Recalculate depot availability and all dependent base pipelines.
         depot_mu = lambda_ij[(i, 0)] * O_i0[i]
-        depot_ebo = ebo_exact(depot_mu, stock_levels[0])
+        depot_ebo_value = depot_ebo(i, stock_levels[0])
         depot_rate = lambda_ij[(i, 0)]
         if depot_rate <= 0:
             return {j: 0.0 for j in L if j != 0}
-        depot_fill = poisson.cdf(stock_levels[0] - 1, depot_mu)
-        regular_lead = {j: O_j[j] + depot_ebo / depot_rate for j in L if j != 0}
+        depot_fill = depot_fill_rate(i, stock_levels[0])
+        regular_lead = {j: O_j[j] + depot_ebo_value / depot_rate for j in L if j != 0}
         waiting = {}
         for j in L:
             if j == 0:
@@ -393,7 +402,7 @@ def run_metric_model_final(df_data):
     FillRate_ij = {}
     for i in P:
         for j in L:
-            FillRate_ij[(i, j)] = float(poisson.cdf(s_ij[(i, j)] - 1, mu_ij[(i, j)])) if lambda_ij[(i, j)] > 0 else None
+            FillRate_ij[(i, j)] = float(depot_fill_rate(i, s_ij[(i, 0)]) if j == 0 else poisson.cdf(s_ij[(i, j)] - 1, mu_ij[(i, j)])) if lambda_ij[(i, j)] > 0 else None
     # Demand-weighted fill rate: fraction of demand fulfilled directly from local stock.
     AverageFillRate_j = {}
     for j in L:
@@ -499,6 +508,7 @@ def run_metric_model_final(df_data):
         "total": TotalEBO,
         "TotalCost": TotalCost,
         "Z_i": Z_i,
+        "Q_i0": Q_i0,
         "N_j": N_j,
         "SystemAvailability_j": SystemAvailability_j,
         "FillRate_ij": FillRate_ij,
@@ -516,5 +526,6 @@ def run_metric_model_final(df_data):
         },
     }
     return results
+
 
 
