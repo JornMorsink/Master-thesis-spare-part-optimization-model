@@ -9,6 +9,7 @@ def run_metric_model_final(df_data):
 #Initialize model parameters
     #budget constraint
     C =454000
+
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA
 #-------------------------------------------------------------------
@@ -26,10 +27,10 @@ def run_metric_model_final(df_data):
     }
     #Transportation lead time data:
     O_j = {
-        1: 0.0027, #this is virtual hub in Rijssen
-        2: 0.1346, #this is VUSA
-        3: 0.0110, #this is the regional hub in UK
-        4: 0.1346  #this is the regional hub in UAE
+        1: 0.0135, #this is virtual hub in Rijssen
+        2: 0.673, #this is VUSA
+        3: 0.0550, #this is the regional hub in UK
+        4: 0.673  #this is the regional hub in UAE
     }
     #Emergency shipment lead time data:
     E_j = {
@@ -231,16 +232,21 @@ def run_metric_model_final(df_data):
         4, 1
     ]
     s_ij = {}
-    #for item_index, i in enumerate(P):
-    #    for j in L:
-    #        s_ij[(i, j)] = starting_values[item_index][j]
-    for i in P:
+    
+    for item_index, i in enumerate(P):
         for j in L:
-            s_ij[(i, j)] = 0
+            s_ij[(i, j)] = starting_values[item_index][j]
+
+    #for i in P:
+    #    for j in L:
+    #        s_ij[(i, j)] = 0
+
     #for i, stock in zip(P, depot_stock):
     #    s_ij[(i, 0)] = stock
+
     #for i, stock in zip(P, base2_stock):
     #    s_ij[(i, 2)] = stock
+
 #calculate the Expected Back Orders with zero stock
     #making the mu parameter which represents the demand during lead time
     mu_i0 = {}
