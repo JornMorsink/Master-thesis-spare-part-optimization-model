@@ -1,6 +1,9 @@
 from scipy.stats import poisson
 import pandas as pd
-def run_metric_model_final(df_data):
+
+def run_metric_model_final_costs(df_data, scenario="current"):
+    if scenario not in ("optimize", "current"):
+        raise ValueError("scenario must be 'optimize' or 'current'")
 
 #------------------------------------------------------------------
 #1. INITIALIZATION
@@ -12,71 +15,110 @@ def run_metric_model_final(df_data):
 #Initialize model parameters
 
     #budget constraint
-    C = 0
+    C = 227750  # Annual budget for optimized scenarios; not enforced for baseline
+
+
 
 #-------------------------------------------------------------------
+
 #2. LOAD INPUT DATA
+
 #-------------------------------------------------------------------
 
 #Read spare part master data:
+
     cost_df = df_data["Total inventory costs"]
 
 #Load right sheet:
+
     demand_df = df_data["Total inventory costs"]
 
 #demad fractions for locations j
+
     f_j = {
+
         0: 1,               #this is VSM
-        1: 0.1111,          #this is virtual hub in Rijssen
+
+        1: 0.2009,          #this is virtual hub in Rijssen
+
         2: 0.7991,          #this is VUSA
-        3: 0.0556,          #this is the regional hub in UK
-        4: 0.0342         #this is the regional hub in UAE
+
+        3: 0.0,          #this is the regional hub in UK
+
+        4: 0.0         #this is the regional hub in UAE
+
     }
 
     #Transportation lead time data:
+
     O_j = {
-        1: 0.0027, #this is virtual hub in Rijssen
-        2: 0.1346, #this is VUSA
-        3: 0.0110, #this is the regional hub in UK
-        4: 0.1346  #this is the regional hub in UAE
+
+        1: 0.0135, #this is virtual hub in Rijssen
+
+        2: 0.673, #this is VUSA
+
+        3: 0.0550, #this is the regional hub in UK
+
+        4: 0.673  #this is the regional hub in UAE
+
     }
 
     #Emergency shipment lead time data:
+
     E_j = {
+
         1: 0.00274,
+
         2: 0.01096,
+
         3: 0.00274,
+
         4: 0.01096
+
     }
 
     #costs of emergency shipment
+
     c_em = {
+
         1: 0, #this is virtual hub in Rijssen
+
         2: 99.45, #this is VUSA
+
         3: 59.09, #this is the regional hub in UK
+
         4: 223.68  #this is the regional hub in UAE
+
     }
 
 #-------------------------------------------------------------------
+
 # 3. DEFINE SETS
+
 #-------------------------------------------------------------------
 
 #define the set of materials
 
     # Load EBO sheet
+
     part_df = df_data["Total inventory costs"]
 
     # Remove spaces from column names
+
     part_df.columns = part_df.columns.str.strip()
 
     # Remove empty rows
+
     part_df = part_df.dropna(subset=["Material description"])
 
     # Define spare part set
+
     P = part_df["Material description"].tolist()
 
     # Number of occurrences of each spare part in one machine.
+
     # The Excel column must be named Z_i.
+
     if "Z_i" not in part_df.columns:
 
         raise ValueError("Missing required column 'Z_i' in 'Total inventory costs'.")
@@ -88,27 +130,37 @@ def run_metric_model_final(df_data):
         raise ValueError("All Z_i values must be positive whole numbers.")
 
     Z_i = dict(zip(P, z_values.astype(int)))
+
     if "Q_i0" not in part_df.columns:
+
         raise ValueError("Missing required column 'Q_i0' in 'Total inventory costs'.")
+
     q_values = pd.to_numeric(part_df["Q_i0"], errors="coerce")
+
     if q_values.isna().any() or (q_values <= 0).any() or (q_values % 1 != 0).any():
+
         raise ValueError("All Q_i0 values must be positive whole numbers.")
+
     Q_i0 = dict(zip(P, q_values.astype(int)))
 
     # Installed machines supported by each base (NOT the central depot).
 
     # Check these counts against the installed-base data before using results.
+
     N_j = {1: 26, 2: 187, 3: 13, 4: 8}
 
     # Number of spare parts
+
     I = len(P)
 
 #define location set:
 
     #define locations
+
     L = [0, 1, 2, 3, 4]
 
     #number of locations
+
     J = len(L)
 
 #-------------------------------------------------------------------
@@ -120,29 +172,37 @@ def run_metric_model_final(df_data):
 #Assigning demand to the parts:
 
     #demand parameter lambda
+
     lambda_part = {}
 
     #for loop looping over all indivdual parts
+
     for _, row in demand_df.iterrows():
 
         #going over all the materials and assigning the demand to the right part
+
         i = row["Material description"]
 
         lambda_part[i] = row["# of occurances in sales data"]
 
     #make lambda for each part and location
+
     lambda_ij = {}
 
     #loop over all the parts
+
     for i in lambda_part:
 
         #loop over all the locations
+
         for j in L:
 
             #cacluate the demand per location and per part
+
             lambda_ij[(i, j)] = lambda_part[i] * f_j[j]
 
     # Assign urgency group to parts
+
     group_part = {}
 
     for _, row in cost_df.iterrows():
@@ -152,35 +212,49 @@ def run_metric_model_final(df_data):
         group_part[i] = row["Group (1 most urgent)"]
 
     def group_weight(group):
+
         if group == 1:
+
             return 1.50   # 50% more important
+
         elif group == 2:
+
             return 1.30   # 30% more important
+
         elif group == 3:
+
             return 1.15  # 15% more important
+
         elif group == 4:
+
             return 1.00   # normal importance
+
         else:
+
             return 1.00
 
-    
 #Assigning costs to the parts:
 
     #cost parameter
+
     cost_part = {}
 
     #for loop looping over all indivdual parts
+
     for _, row in cost_df.iterrows():
 
         #going over all the materials and assigning the cost to the right part
+
         i = row["Material description"]
 
         cost_part[i] = row["Purchase price"] / row["Purchase price per"]
 
     #Setting lead time for the depot
+
     O_i0 = {}
 
     #loop over all the materials and retrieve the corresponding lead time
+
     for _, row in cost_df.iterrows():
 
         i = row["Material description"]
@@ -188,9 +262,10 @@ def run_metric_model_final(df_data):
         O_i0[i] = row["Lead time depot"]
 
 #-------------------------------------------------------------------
-#5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
-#-------------------------------------------------------------------
 
+#5. INITIALIZE INVENTORY LEVELS + CALCULATE BACKORDERS FOR DEPOT
+
+#-------------------------------------------------------------------
 
     # Starting values obtained from the convexity analysis.
 
@@ -387,22 +462,18 @@ def run_metric_model_final(df_data):
     ]
 
     s_ij = {}
-
-    #for item_index, i in enumerate(P):
-    #    for j in L:
-    #        s_ij[(i, j)] = starting_values[item_index][j]
-
-    for i in P:
-        for j in L:
-            s_ij[(i, j)] = 0
-
-    for i, stock in zip(P, depot_stock):
-        s_ij[(i, 0)] = stock
-
-    for i, stock in zip(P, base2_stock):
-        s_ij[(i, 2)] = stock
-
-
+    if scenario == "current":
+        if len(depot_stock) != len(P) or len(base2_stock) != len(P):
+            raise ValueError("Current stock lists must match the number and order of spare parts")
+        for idx, i in enumerate(P):
+            for j in L:
+                s_ij[(i, j)] = depot_stock[idx] if j == 0 else (base2_stock[idx] if j == 2 else 0)
+    else:
+        if len(starting_values) != len(P):
+            raise ValueError("Starting inventory rows must match the input spare parts")
+        for idx, i in enumerate(P):
+            for j in L:
+                s_ij[(i, j)] = starting_values[idx][j]
 
 #calculate the Expected Back Orders with zero stock
 
@@ -429,12 +500,19 @@ def run_metric_model_final(df_data):
         return max(0.0, term1 - term2)
 
     def depot_ebo(i, stock):
+
         return sum(ebo_exact(mu_i0[i], stock + k) for k in range(1, Q_i0[i] + 1)) / Q_i0[i]
 
     def depot_fill_rate(i, stock):
+
+        if stock <= 0:
+
+            return 0.0  # No physical depot inventory available for emergency shipments.
+
         return sum(poisson.cdf(stock + k - 1, mu_i0[i]) for k in range(1, Q_i0[i] + 1)) / Q_i0[i]
 
     for i in P:
+
         EBO_i0[i] = depot_ebo(i, s_ij[(i, 0)])
 
 #-------------------------------------------------------------------
@@ -599,100 +677,101 @@ def run_metric_model_final(df_data):
 
     Efficiency = {}
 
-    # Calculate inventory investment already used by the starting solution
-
-    TotalCost = sum(
-
-        s_ij[(i, j)] * cost_part[i]
-
-        for i in P
-
-        for j in L
-
-    )
-
-    # Cache candidate gains: only the modified item needs updating.
-
-    # heap ordering reproduces the original scan's tie-breaking (item, location).
-
-    import heapq
-
-    heap = []
-
-    versions = {i: 0 for i in P}
-
-    item_order = {i: n for n, i in enumerate(P)}
-
-    def update_item_candidates(i):
-
-        versions[i] += 1
-
-        version = versions[i]
-
-        current_stock = {j: s_ij[(i, j)] for j in L}
-
-        current_wait = evaluate_item_waiting_time(i, current_stock)
-
-        urgency_weight = group_weight(group_part[i])
-
+    # Equation (4.9): annual holding costs plus annual emergency shipment costs.
+    h = 0.20
+    def item_emergency_cost(i, stock_levels):
+        depot_rate = lambda_ij[(i, 0)]
+        if depot_rate <= 0:
+            return 0.0
+        depot_backorders = depot_ebo(i, stock_levels[0])
+        depot_fill = depot_fill_rate(i, stock_levels[0])
+        total = 0.0
         for j in L:
-
-            candidate_stock = current_stock.copy()
-
-            candidate_stock[j] += 1
-
-            candidate_wait = evaluate_item_waiting_time(i, candidate_stock)
-
-            # Marginal reduction in TOTAL demand-weighted waiting time.
-
-            # A depot increment affects all bases; a base increment affects only that base.
-
             if j == 0:
-
-                reduction = sum(
-
-                    lambda_ij[(i, k)] * (current_wait[k] - candidate_wait[k])
-
-                    for k in L if k != 0
-
-                )
-
+                continue
+            demand = lambda_ij[(i, j)]
+            if demand <= 0:
+                continue
+            regular_lead = O_j[j] + depot_backorders / depot_rate
+            stockout = 1 - poisson.cdf(stock_levels[j] - 1, demand * regular_lead)
+            theta = stockout * depot_fill
+            total += demand * theta * c_em[j]
+        return total
+    def item_holding_cost(i, stock_levels):
+        return h * cost_part[i] * (sum(stock_levels[j] for j in L) + Q_i0[i] / 2.0)
+    def item_total_cost(i, stock_levels):
+        return item_holding_cost(i, stock_levels) + item_emergency_cost(i, stock_levels)
+    def cost_breakdown():
+        depot = sum(h * cost_part[i] * (s_ij[(i, 0)] + Q_i0[i] / 2.0) for i in P)
+        bases = sum(h * cost_part[i] * s_ij[(i, j)] for i in P for j in L if j != 0)
+        emergency = sum(item_emergency_cost(i, {j: s_ij[(i, j)] for j in L}) for i in P)
+        return depot, bases, emergency
+    DepotHoldingCost, BaseHoldingCost, TotalEmergencyCost = cost_breakdown()
+    TotalHoldingCost = DepotHoldingCost + BaseHoldingCost
+    TotalCost = TotalHoldingCost + TotalEmergencyCost
+    if scenario == "optimize" and TotalCost > C + 1e-8:
+        raise ValueError(f"Starting inventory violates annual cost budget: EUR {TotalCost:,.2f} > EUR {C:,.2f}")
+    # Only the modified item's emergency fraction changes when one unit is added.
+    # Candidate costs may be negative: an extra stock unit can save emergency costs.
+    import heapq
+    heap = []
+    versions = {i: 0 for i in P}
+    item_order = {i: n for n, i in enumerate(P)}
+    candidate_costs = {}
+    def update_item_candidates(i):
+        versions[i] += 1
+        version = versions[i]
+        current_stock = {j: s_ij[(i, j)] for j in L}
+        current_wait = evaluate_item_waiting_time(i, current_stock)
+        current_cost = item_total_cost(i, current_stock)
+        urgency_weight = group_weight(group_part[i])
+        for j in L:
+            candidate_stock = current_stock.copy()
+            candidate_stock[j] += 1
+            candidate_wait = evaluate_item_waiting_time(i, candidate_stock)
+            candidate_cost = item_total_cost(i, candidate_stock)
+            marginal_cost = candidate_cost - current_cost
+            candidate_costs[(i, j)] = marginal_cost
+            if j == 0:
+                reduction = sum(lambda_ij[(i, k)] * (current_wait[k] - candidate_wait[k]) for k in L if k != 0)
             else:
-
                 reduction = lambda_ij[(i, j)] * (current_wait[j] - candidate_wait[j])
-
             DeltaWaitingTime[(i, j)] = reduction
-
-            efficiency = (reduction * urgency_weight / cost_part[i]) if cost_part[i] > 0 else 0.0
-
+            # A cost-saving addition with positive service benefit is prioritized.
+            efficiency = (reduction * urgency_weight / marginal_cost) if marginal_cost > 1e-12 else (float('inf') if reduction > 1e-12 else 0.0)
             Efficiency[(i, j)] = efficiency
-
-            if reduction > 1e-12 and efficiency > -1:
-
+            if reduction > 1e-12:
                 heapq.heappush(heap, (-efficiency, item_order[i], j, version, i))
-
-    for i in P:
-
-        update_item_candidates(i)
-
-    while heap:
-
-        negative_eff, _, best_j, version, best_i = heapq.heappop(heap)
-
-        if version != versions[best_i]:
-
-            continue
-
-        if TotalCost + cost_part[best_i] > C:
-
-            continue
-
+    if scenario == "optimize":
+        for i in P:
+            update_item_candidates(i)
+    while heap and scenario == "optimize":
+        deferred = []
+        selected = None
+        while heap:
+            negative_eff, _, best_j, version, best_i = heapq.heappop(heap)
+            if version != versions[best_i]:
+                continue
+            marginal_cost = candidate_costs[(best_i, best_j)]
+            if TotalCost + marginal_cost > C + 1e-8:
+                deferred.append((negative_eff, item_order[best_i], best_j, version, best_i))
+                continue
+            selected = (best_i, best_j, marginal_cost)
+            break
+        for entry in deferred:
+            heapq.heappush(heap, entry)
+        if selected is None:
+            break
+        best_i, best_j, marginal_cost = selected
         s_ij[(best_i, best_j)] += 1
-
-        TotalCost += cost_part[best_i]
-
+        TotalCost += marginal_cost
         update_item_candidates(best_i)
-
+    # Reconcile floating point incremental changes against the exact constraint.
+    DepotHoldingCost, BaseHoldingCost, TotalEmergencyCost = cost_breakdown()
+    TotalHoldingCost = DepotHoldingCost + BaseHoldingCost
+    TotalCost = TotalHoldingCost + TotalEmergencyCost
+    if scenario == "optimize" and TotalCost > C + 1e-6:
+        raise RuntimeError("Optimized allocation violates Equation (4.9).")
     # Compute final values once, rather than after every inventory increment.
 
     mu_ij, theta_ij = compute_mu_ij()
@@ -859,25 +938,8 @@ def run_metric_model_final(df_data):
 
             TotalEBO += EBO_ij[(i,j)]
 
-    TotalEmergencyCost = 0
-
-    for i in P:
-
-        for j in L:
-
-            if j == 0:
-
-                continue
-
-            TotalEmergencyCost += (
-
-                theta_ij[(i,j)]
-
-                * lambda_ij[(i,j)]
-
-                * c_em[j]
-
-            )
+    # Costs were already calculated consistently with Equation (4.9).
+    # Reuse them instead of recalculating emergency costs differently.
 
     # ---------------------------------------------------
 
@@ -928,8 +990,16 @@ def run_metric_model_final(df_data):
         "total": TotalEBO,
 
         "TotalCost": TotalCost,
+        "TotalHoldingCost": TotalHoldingCost,
+        "DepotHoldingCost": DepotHoldingCost,
+        "BaseHoldingCost": BaseHoldingCost,
+        "TotalEmergencyCost": TotalEmergencyCost,
+        "AnnualCostBudget": C if scenario == "optimize" else None,
+        "Scenario": scenario,
+        "InventoryValue": sum(s_ij[(i, j)] * cost_part[i] for i in P for j in L),
 
         "Z_i": Z_i,
+
         "Q_i0": Q_i0,
 
         "N_j": N_j,

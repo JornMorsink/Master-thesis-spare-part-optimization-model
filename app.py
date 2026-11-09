@@ -5,6 +5,7 @@ from model_VARI import run_metric_model_vari
 from model_VARI_solo import run_metric_model_vari_solo
 from model_VARI_new import run_metric_model_vari_new
 from Final_model import run_metric_model_final
+from Final_model_with_costs import run_metric_model_final_costs
 from model_VARI_soloV2 import run_metric_model_vari_solo_V2
 from model_VARI_convex import run_metric_model_vari_convex
 from model_current_sit import run_metric_model_current_sit
@@ -36,7 +37,7 @@ if uploaded_file is not None:
     # RUN BUTTON
     # ---------------------------------------------------
     if st.button("Run METRIC Calculation"):
-        results = run_metric_model_final(df_data)
+        results = run_metric_model_final_costs(df_data)
         # ---------------------------------------------------
         # GENERAL RESULTS
         # ---------------------------------------------------
