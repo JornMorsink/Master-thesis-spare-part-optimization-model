@@ -42,9 +42,9 @@ def run_metric_model_final(df_data):
     #costs of emergency shipment
     c_em = {
         1: 0, #this is virtual hub in Rijssen
-        2: 397.79, #this is VUSA
-        3: 236.36, #this is the regional hub in UK
-        4: 894.71  #this is the regional hub in UAE
+        2: 198.895, #this is VUSA
+        3: 118.18, #this is the regional hub in UK
+        4: 447.355  #this is the regional hub in UAE
     }
 #-------------------------------------------------------------------
 # 3. DEFINE SETS
