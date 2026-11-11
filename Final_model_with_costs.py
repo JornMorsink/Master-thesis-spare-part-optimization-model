@@ -1,10 +1,11 @@
 from scipy.stats import poisson
 import pandas as pd
 
-def run_metric_model_final_costs(df_data, scenario="current"):
-    if scenario not in ("optimize", "current"):
-        raise ValueError("scenario must be 'optimize' or 'current'")
-
+def run_metric_model_final_costs(df_data, scenario="optimize"):
+    if scenario not in ("optimize", "current", "toy"):
+        raise ValueError(
+            "scenario must be 'optimize', 'current' or 'toy'"
+        )
 #------------------------------------------------------------------
 #1. INITIALIZATION
 #-------------------------------------------------------------------
@@ -15,7 +16,7 @@ def run_metric_model_final_costs(df_data, scenario="current"):
 #Initialize model parameters
 
     #budget constraint
-    C = 227750  # Annual budget for optimized scenarios; not enforced for baseline
+    C = 258000  # Annual budget for optimized scenarios; not enforced for baseline
 
 #-------------------------------------------------------------------
 #2. LOAD INPUT DATA
@@ -30,10 +31,10 @@ def run_metric_model_final_costs(df_data, scenario="current"):
 #demad fractions for locations j
     f_j = {
         0: 1,               #this is VSM
-        1: 0.2009,          #this is virtual hub in Rijssen
+        1: 0.1111,          #this is virtual hub in Rijssen
         2: 0.7991,          #this is VUSA
-        3: 0.0,          #this is the regional hub in UK
-        4: 0.0         #this is the regional hub in UAE
+        3: 0.0556,          #this is the regional hub in UK
+        4: 0.0342         #this is the regional hub in UAE
     }
 
     #Transportation lead time data:
@@ -288,18 +289,35 @@ def run_metric_model_final_costs(df_data, scenario="current"):
     ]
 
     s_ij = {}
+
     if scenario == "current":
         if len(depot_stock) != len(P) or len(base2_stock) != len(P):
-            raise ValueError("Current stock lists must match the number and order of spare parts")
+            raise ValueError(
+                "Current stock lists must match the number and order of spare parts"
+            )
+
         for idx, i in enumerate(P):
             for j in L:
-                s_ij[(i, j)] = depot_stock[idx] if j == 0 else (base2_stock[idx] if j == 2 else 0)
-    else:
+                s_ij[(i, j)] = (
+                    depot_stock[idx] if j == 0
+                    else base2_stock[idx] if j == 2
+                    else 0
+                )
+
+    elif scenario == "optimize":
         if len(starting_values) != len(P):
-            raise ValueError("Starting inventory rows must match the input spare parts")
+            raise ValueError(
+                "Starting inventory rows must match the input spare parts"
+            )
+
         for idx, i in enumerate(P):
             for j in L:
                 s_ij[(i, j)] = starting_values[idx][j]
+
+    elif scenario == "toy":
+        for i in P:
+            for j in L:
+                s_ij[(i, j)] = 0
 
 #calculate the Expected Back Orders with zero stock
 
@@ -484,7 +502,7 @@ def run_metric_model_final_costs(df_data, scenario="current"):
     TotalHoldingCost = DepotHoldingCost + BaseHoldingCost
     TotalCost = TotalHoldingCost + TotalEmergencyCost
 
-    if scenario == "optimize" and TotalCost > C + 1e-8:
+    if scenario in ("optimize", "toy") and TotalCost > C + 1e-8:
         raise ValueError(f"Starting inventory violates annual cost budget: EUR {TotalCost:,.2f} > EUR {C:,.2f}")
 
     # Only the modified item's emergency fraction changes when one unit is added.
@@ -525,11 +543,11 @@ def run_metric_model_final_costs(df_data, scenario="current"):
             if reduction > 1e-12:
                 heapq.heappush(heap, (-efficiency, item_order[i], j, version, i))
 
-    if scenario == "optimize":
+    if scenario in ("optimize", "toy"):
         for i in P:
             update_item_candidates(i)
 
-    while heap and scenario == "optimize":
+    while heap and scenario in ("optimize", "toy"):
         deferred = []
         selected = None
 
@@ -565,12 +583,26 @@ def run_metric_model_final_costs(df_data, scenario="current"):
     TotalHoldingCost = DepotHoldingCost + BaseHoldingCost
     TotalCost = TotalHoldingCost + TotalEmergencyCost
 
-    if scenario == "optimize" and TotalCost > C + 1e-6:
+    if scenario in ("optimize", "toy") and TotalCost > C + 1e-6:
         raise RuntimeError("Optimized allocation violates Equation (4.9).")
 
     # Compute final values once, rather than after every inventory increment.
     mu_ij, theta_ij = compute_mu_ij()
     EBO_ij = compute_EBO(mu_ij)
+
+
+    # Annual emergency shipment costs per location
+    EmergencyCost_j = {
+        j: sum(
+            lambda_ij[(i, j)] * theta_ij[(i, j)] * c_em[j]
+            for i in P
+        )
+        for j in L if j != 0
+    }
+
+    # Check against the total emergency costs
+    assert abs(sum(EmergencyCost_j.values()) - TotalEmergencyCost) < 1e-6
+
 
     # Criticality-adjusted EBO for the waiting-time objective; physical EBO stays unchanged.
     WeightedEBO_ij = {(i, j): group_weight(group_part[i]) * EBO_ij[(i, j)] for i in P for j in L}
@@ -719,7 +751,8 @@ def run_metric_model_final_costs(df_data, scenario="current"):
         "DepotHoldingCost": DepotHoldingCost,
         "BaseHoldingCost": BaseHoldingCost,
         "TotalEmergencyCost": TotalEmergencyCost,
-        "AnnualCostBudget": C if scenario == "optimize" else None,
+        "EmergencyCost_j": EmergencyCost_j,
+        "AnnualCostBudget": C if scenario in ("optimize", "toy") else None,
         "Scenario": scenario,
         "InventoryValue": sum(s_ij[(i, j)] * cost_part[i] for i in P for j in L),
         "Z_i": Z_i,
