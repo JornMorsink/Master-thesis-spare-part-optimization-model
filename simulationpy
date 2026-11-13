@@ -9,65 +9,28 @@ from collections import deque
 # Network configuration
 # ============================================================
 
-HUB_NAMES = [
-    "VUSA",
-    "UK hub",
-    "UAE hub",
-    "Virtual hub"
-]
+HUB_NAMES = ["VUSA", "UK hub", "UAE hub", "Virtual hub"]
 
 # Share of total customer demand per base location.
-# VUSA = 79.91% of total demand.
-DEMAND_SHARE = [
-    0.7991,   # VUSA
-    0.0800,   # UK hub
-    0.0500,   # UAE hub
-    0.0709    # Virtual hub
-]
+DEMAND_SHARE = [0.7991, 0.0800, 0.0500, 0.0709]
 
-# Regular replenishment lead time VSM -> hub (days)
-REGULAR_LEAD_TIME = [
-    49.0,     # VUSA
-    3.0,      # UK
-    49.0,     # UAE
-    0.25      # Virtual hub
-]
+# Regular replenishment lead time depot -> hub (days)
+REGULAR_LEAD_TIME = [49.0, 3.0, 49.0, 0.25]
 
 # Emergency shipment lead time (days)
-EMERGENCY_LEAD_TIME = [
-    3.0,      # VUSA
-    1.0,      # UK
-    2.0,      # UAE
-    0.25      # Virtual hub
-]
+EMERGENCY_LEAD_TIME = [4.0, 1.0, 4.0, 0.25]
 
-# Total demand rate across all hubs
-LAMBDA_TOTAL = 0.5       # parts/day
+# Total demand rate across all hubs (parts/day)
+LAMBDA_TOTAL = 0.5
 
-# Supplier -> VSM lead time
-DEPOT_LEAD_TIME = 30.0   # days
+# Supplier -> depot lead time (days)
+DEPOT_LEAD_TIME = 30.0
 
-# Base-stock levels at hubs
-#
-# These remain at the same values as the previous setting.
-# The depot stock is varied separately below to create
-# sufficiently frequent depot stockouts.
-DEFAULT_BASE_STOCK = [
-    20,       # VUSA
-    1,       # UK hub
-    8,        # UAE hub
-    4         # Virtual hub
-]
+# Base-stock levels at hubs (used by BOTH simulation and analytical model)
+DEFAULT_BASE_STOCK = [10, 1, 2, 4]
 
-if not math.isclose(
-    sum(DEMAND_SHARE),
-    1.0,
-    rel_tol=1e-9,
-    abs_tol=1e-9
-):
-    raise ValueError(
-        "DEMAND_SHARE must sum to 1.0."
-    )
+if not math.isclose(sum(DEMAND_SHARE), 1.0, rel_tol=1e-9, abs_tol=1e-9):
+    raise ValueError("DEMAND_SHARE must sum to 1.0.")
 
 
 # ============================================================
@@ -75,46 +38,29 @@ if not math.isclose(
 # ============================================================
 
 def poisson_cdf(k, mu):
-    """
-    P(X <= k) for X ~ Poisson(mu).
-    """
-
+    """P(X <= k) for X ~ Poisson(mu)."""
     if k < 0:
         return 0.0
-
     if mu <= 0:
         return 1.0
-
     p = math.exp(-mu)
     total = p
     for n in range(1, k + 1):
         p *= mu / n
         total += p
-
     return min(total, 1.0)
 
 
 def expected_backorders(mu, s):
-    """
-    E[(X - s)+] for X ~ Poisson(mu).
-    """
-
+    """E[(X - s)+] for X ~ Poisson(mu)."""
     if mu <= 0:
         return 0.0
-
     if s < 0:
         return mu - s
-
-    max_n = int(
-        mu
-        + 10 * math.sqrt(max(mu, 0.0))
-        + 100
-    )
-
+    max_n = int(mu + 10 * math.sqrt(max(mu, 0.0)) + 100)
     p = math.exp(-mu)
     total = 0.0
     for n in range(1, max_n + 1):
-
         p *= mu / n
         if n > s:
             total += (n - s) * p
@@ -122,27 +68,14 @@ def expected_backorders(mu, s):
 
 
 def erlang_loss(servers, offered_load):
-    """
-    Erlang-B blocking probability.
-
-    In this model this is used as the probability that the
-    hub has zero units on hand.
-    """
-
+    """Erlang-B blocking probability (= P(hub has zero units on hand))."""
     if servers <= 0:
         return 1.0
-
     if offered_load <= 0:
         return 0.0
-
     b = 1.0
-
     for n in range(1, servers + 1):
-        b = (
-            offered_load * b
-            / (n + offered_load * b)
-        )
-
+        b = offered_load * b / (n + offered_load * b)
     return b
 
 
@@ -152,8 +85,7 @@ def erlang_loss(servers, offered_load):
 
 _DEMAND = 0
 _REGULAR_ARRIVAL = 1
-_EMERGENCY_ARRIVAL = 2
-_DEPOT_REPLENISH = 3
+_DEPOT_REPLENISH = 2
 
 
 # ============================================================
@@ -164,555 +96,187 @@ def run_simulation(
     mean_demand,
     lead_time_L,
     base_stock_s,
-    emerg_time,
     lead_time_L0,
     base_stock_s0,
     sim_duration=20_000.0,
     warmup=2_000.0,
     seed=42,
 ):
-
     rng = random.Random(seed)
-
     J = len(mean_demand)
 
-    if not (
-        len(lead_time_L)
-        == len(base_stock_s)
-        == len(emerg_time)
-        == J
-    ):
-        raise ValueError(
-            "All base parameter lists must have the same length."
-        )
-
+    if not (len(lead_time_L) == len(base_stock_s) == J):
+        raise ValueError("All base parameter lists must have the same length.")
     if any(rate <= 0 for rate in mean_demand):
-        raise ValueError(
-            "All demand rates must be positive."
-        )
-
+        raise ValueError("All demand rates must be positive.")
     if warmup >= sim_duration:
-        raise ValueError(
-            "warmup must be smaller than sim_duration."
-        )
+        raise ValueError("warmup must be smaller than sim_duration.")
 
-    # ========================================================
-    # State
-    # ========================================================
-
+    # ---------------- State ----------------
     depot_on_hand = base_stock_s0
-
-    # Regular replenishment requests that are waiting
-    # because the depot had no inventory.
-    depot_backorders = deque()
-
+    depot_backorders = deque()          # hubs waiting for a depot unit
     hub_on_hand = list(base_stock_s)
-
-    # Regular units currently travelling from depot to hubs.
     regular_in_transit = 0
 
-    # ========================================================
-    # Demand counters
-    # ========================================================
-
+    # ---------------- Demand counters ----------------
     demand_total = [0] * J
-
     local_fills = [0] * J
-
     emergency_depot = [0] * J
-
     emergency_external = [0] * J
-
     hub_empty_at_demand = [0] * J
-
     depot_up_at_demand = [0] * J
-
     joint_at_demand = [0] * J
 
-    # ========================================================
-    # Depot counters
-    # ========================================================
-
+    # ---------------- Depot counters ----------------
     depot_regular_requests = 0
-
     depot_regular_filled = 0
-
     depot_backorder_requests = 0
-
     supplier_orders = 0
 
-    # ========================================================
-    # Time averages
-    # ========================================================
-
+    # ---------------- Time averages ----------------
     hub_empty_time = [0.0] * J
-
     joint_time = [0.0] * J
-
     depot_up_time = 0.0
-
     regular_in_transit_area = 0.0
-
     depot_backorder_area = 0.0
-
     last_time = 0.0
 
-    # ========================================================
-    # Event queue
-    # ========================================================
-
+    # ---------------- Event queue ----------------
     event_queue = []
-
     sequence_number = 0
 
     def schedule(time, kind, hub):
-
         nonlocal sequence_number
-
         sequence_number += 1
+        heapq.heappush(event_queue, (time, sequence_number, kind, hub))
 
-        heapq.heappush(
-            event_queue,
-            (
-                time,
-                sequence_number,
-                kind,
-                hub
-            )
-        )
-
-    # ========================================================
     # Generate demand events
-    # ========================================================
-
     for j in range(J):
-
-        t = rng.expovariate(
-            mean_demand[j]
-        )
-
+        t = rng.expovariate(mean_demand[j])
         while t <= sim_duration:
+            schedule(t, _DEMAND, j)
+            t += rng.expovariate(mean_demand[j])
 
-            schedule(
-                t,
-                _DEMAND,
-                j
-            )
-
-            t += rng.expovariate(
-                mean_demand[j]
-            )
-
-    # ========================================================
-    # Time accumulation
-    # ========================================================
-
+    # ---------------- Time accumulation ----------------
     def accumulate(time):
-
-        nonlocal last_time
-        nonlocal depot_backorder_area
-        nonlocal depot_up_time
+        nonlocal last_time, depot_backorder_area, depot_up_time
         nonlocal regular_in_transit_area
 
-        start = max(
-            last_time,
-            warmup
-        )
-
+        start = max(last_time, warmup)
         if time > start:
-
             dt = time - start
-
-            depot_backorder_area += (
-                len(depot_backorders) * dt
-            )
-
+            depot_backorder_area += len(depot_backorders) * dt
             if depot_on_hand > 0:
                 depot_up_time += dt
-
-            regular_in_transit_area += (
-                regular_in_transit * dt
-            )
-
+            regular_in_transit_area += regular_in_transit * dt
             for j in range(J):
-
                 if hub_on_hand[j] == 0:
-
                     hub_empty_time[j] += dt
-
                     if depot_on_hand > 0:
                         joint_time[j] += dt
-
         last_time = time
 
-    # ========================================================
-    # Main event loop
-    # ========================================================
-
+    # ---------------- Main event loop ----------------
     while event_queue:
-
-        time, _, kind, j = heapq.heappop(
-            event_queue
-        )
-
+        time, _, kind, j = heapq.heappop(event_queue)
         if time > sim_duration:
             break
 
         accumulate(time)
-
         active = time >= warmup
 
-        # ====================================================
-        # CUSTOMER DEMAND
-        # ====================================================
-
+        # ---------- CUSTOMER DEMAND ----------
         if kind == _DEMAND:
-
-            depot_up = (
-                depot_on_hand > 0
-            )
-
-            hub_empty = (
-                hub_on_hand[j] == 0
-            )
+            depot_up = depot_on_hand > 0
+            hub_empty = hub_on_hand[j] == 0
 
             if active:
-
                 demand_total[j] += 1
-
                 if depot_up:
                     depot_up_at_demand[j] += 1
-
                 if hub_empty:
-
                     hub_empty_at_demand[j] += 1
-
                     if depot_up:
                         joint_at_demand[j] += 1
 
-            # ------------------------------------------------
-            # CASE 1:
-            # Hub has inventory
-            # ------------------------------------------------
-
             if not hub_empty:
-
-                # Serve customer locally.
+                # CASE 1: hub serves customer locally
                 hub_on_hand[j] -= 1
-
                 if active:
                     local_fills[j] += 1
 
-                # One regular replenishment request is created.
-                depot_regular_requests += 1
-
+                depot_regular_requests += 1  # (note: also counts warmup)
                 if depot_on_hand > 0:
-
                     if active:
                         depot_regular_filled += 1
-
                     depot_on_hand -= 1
-
                     regular_in_transit += 1
-
-                    schedule(
-                        time + lead_time_L[j],
-                        _REGULAR_ARRIVAL,
-                        j
-                    )
-
+                    schedule(time + lead_time_L[j], _REGULAR_ARRIVAL, j)
                 else:
-
-                    # Regular request waits at the depot.
                     depot_backorders.append(j)
-
                     if active:
                         depot_backorder_requests += 1
 
-                # Supplier replenishes the depot.
                 supplier_orders += 1
-
-                schedule(
-                    time + lead_time_L0,
-                    _DEPOT_REPLENISH,
-                    -1
-                )
-
-            # ------------------------------------------------
-            # CASE 2:
-            # Hub empty + depot has stock
-            # ------------------------------------------------
+                schedule(time + lead_time_L0, _DEPOT_REPLENISH, -1)
 
             elif depot_up:
-
-                # Emergency shipment from depot.
-                #
-                # IMPORTANT:
-                # The emergency unit goes directly to the
-                # customer. It does NOT enter hub inventory.
+                # CASE 2: hub empty, depot has stock -> emergency from depot
                 if active:
                     emergency_depot[j] += 1
-
                 depot_on_hand -= 1
-
-                # Replenish the unit consumed from the depot.
                 supplier_orders += 1
-
-                schedule(
-                    time + lead_time_L0,
-                    _DEPOT_REPLENISH,
-                    -1
-                )
-
-            # ------------------------------------------------
-            # CASE 3:
-            # Hub empty + depot empty
-            # ------------------------------------------------
+                schedule(time + lead_time_L0, _DEPOT_REPLENISH, -1)
 
             else:
-
-                # Emergency shipment from external source.
+                # CASE 3: hub empty, depot empty -> external emergency
                 if active:
                     emergency_external[j] += 1
 
-                # No depot stock is consumed.
-                # No supplier order is generated.
-
-        # ====================================================
-        # REGULAR HUB ARRIVAL
-        # ====================================================
-
+        # ---------- REGULAR HUB ARRIVAL ----------
         elif kind == _REGULAR_ARRIVAL:
-
             hub_on_hand[j] += 1
-
             regular_in_transit -= 1
 
-        # ====================================================
-        # EMERGENCY ARRIVAL
-        # ====================================================
-
-        elif kind == _EMERGENCY_ARRIVAL:
-
-            # Not used for inventory.
-            #
-            # Emergency shipments are direct customer
-            # shipments in this model.
-            pass
-
-        # ====================================================
-        # DEPOT REPLENISHMENT
-        # ====================================================
-
+        # ---------- DEPOT REPLENISHMENT ----------
         elif kind == _DEPOT_REPLENISH:
-
             if depot_backorders:
-
-                # Supplier replenishment immediately serves
-                # the oldest waiting regular hub request.
-                waiting_hub = (
-                    depot_backorders.popleft()
-                )
-
+                waiting_hub = depot_backorders.popleft()
                 regular_in_transit += 1
-
-                schedule(
-                    time + lead_time_L[waiting_hub],
-                    _REGULAR_ARRIVAL,
-                    waiting_hub
-                )
-
+                schedule(time + lead_time_L[waiting_hub], _REGULAR_ARRIVAL, waiting_hub)
             else:
-
                 depot_on_hand += 1
 
         else:
-
-            raise ValueError(
-                f"Unknown event kind: {kind}"
-            )
-
-    # ========================================================
-    # Final accumulation
-    # ========================================================
+            raise ValueError(f"Unknown event kind: {kind}")
 
     accumulate(sim_duration)
-
-    effective_time = (
-        sim_duration - warmup
-    )
-
-    # ========================================================
-    # Helpers
-    # ========================================================
+    effective_time = sim_duration - warmup
 
     def per_demand(counter):
+        return [counter[j] / max(demand_total[j], 1) for j in range(J)]
 
-        return [
-            counter[j]
-            / max(demand_total[j], 1)
-            for j in range(J)
-        ]
+    p_hub_empty_time = [hub_empty_time[j] / effective_time for j in range(J)]
+    p_depot_up_time = depot_up_time / effective_time
+    p_joint_time = [joint_time[j] / effective_time for j in range(J)]
 
-    # ========================================================
-    # Time probabilities
-    # ========================================================
-
-    p_hub_empty_time = [
-        hub_empty_time[j]
-        / effective_time
-        for j in range(J)
-    ]
-
-    p_depot_up_time = (
-        depot_up_time
-        / effective_time
-    )
-
-    p_joint_time = [
-        joint_time[j]
-        / effective_time
-        for j in range(J)
-    ]
-
-    # ========================================================
-    # Demand-epoch probabilities
-    # ========================================================
-
-    p_hub_empty_demand = per_demand(
-        hub_empty_at_demand
-    )
-
-    p_depot_up_demand = per_demand(
-        depot_up_at_demand
-    )
-
-    p_joint_demand = per_demand(
-        joint_at_demand
-    )
-
-    # ========================================================
-    # Rates
-    # ========================================================
-
-    demand_rate_sim = [
-        demand_total[j]
-        / effective_time
-        for j in range(J)
-    ]
-
-    supplier_order_rate_sim = (
-        supplier_orders
-        / effective_time
-    )
-
-    depot_regular_request_rate_sim = (
-        depot_regular_requests
-        / effective_time
-    )
-
-    depot_backorder_arrival_rate_sim = (
-        depot_backorder_requests
-        / effective_time
-    )
-
-    # ========================================================
-    # Depot regular fill rate
-    # ========================================================
-
-    depot_regular_fill_rate_sim = (
-        depot_regular_filled
-        / max(depot_regular_requests, 1)
-    )
-
-    # ========================================================
-    # Depot waiting time
-    # ========================================================
-
-    if depot_backorder_arrival_rate_sim > 0:
-
-        depot_wait_sim = (
-            depot_backorder_area
-            / effective_time
-        ) / depot_backorder_arrival_rate_sim
-
-    else:
-
-        depot_wait_sim = 0.0
-
-    # ========================================================
-    # Return
-    # ========================================================
+    p_hub_empty_demand = per_demand(hub_empty_at_demand)
+    p_depot_up_demand = per_demand(depot_up_at_demand)
+    p_joint_demand = per_demand(joint_at_demand)
 
     return {
-
-        "beta_sim":
-            per_demand(local_fills),
-
-        "theta_sim":
-            per_demand(emergency_depot),
-
-        "gamma_sim":
-            per_demand(emergency_external),
-
-        "p_hub_empty_demand":
-            p_hub_empty_demand,
-
-        "p_depot_up_demand":
-            p_depot_up_demand,
-
-        "p_joint_demand":
-            p_joint_demand,
-
-        "p_hub_empty_time":
-            p_hub_empty_time,
-
-        "p_depot_up_time":
-            [p_depot_up_time] * J,
-
-        "p_joint_time":
-            p_joint_time,
-
-        "p_product_demand": [
-            p_hub_empty_demand[j]
-            * p_depot_up_demand[j]
-            for j in range(J)
-        ],
-
-        "p_product_time": [
-            p_hub_empty_time[j]
-            * p_depot_up_time
-            for j in range(J)
-        ],
-
-        "ebo_depot":
-            depot_backorder_area
-            / effective_time,
-
-        "depot_regular_fill_rate_sim":
-            depot_regular_fill_rate_sim,
-
-        "supplier_order_rate_sim":
-            supplier_order_rate_sim,
-
-        "depot_regular_request_rate_sim":
-            depot_regular_request_rate_sim,
-
-        "depot_backorder_arrival_rate_sim":
-            depot_backorder_arrival_rate_sim,
-
-        "depot_wait_sim":
-            depot_wait_sim,
-
-        "regular_in_transit_area":
-            regular_in_transit_area
-            / effective_time,
-
-        "demand_rate_sim":
-            demand_rate_sim,
-
-        "demand_total":
-            demand_total,
+        "beta_sim": per_demand(local_fills),
+        "theta_sim": per_demand(emergency_depot),
+        "gamma_sim": per_demand(emergency_external),
+        "p_hub_empty_demand": p_hub_empty_demand,
+        "p_depot_up_demand": p_depot_up_demand,
+        "p_joint_demand": p_joint_demand,
+        "p_hub_empty_time": p_hub_empty_time,
+        "p_depot_up_time": [p_depot_up_time] * J,
+        "p_joint_time": p_joint_time,
+        "ebo_depot": depot_backorder_area / effective_time,
+        "regular_in_transit_avg": regular_in_transit_area / effective_time,
+        "demand_total": demand_total,
     }
 
 
@@ -720,80 +284,23 @@ def run_simulation(
 # Replications
 # ============================================================
 
-def run_replications(
-    n_reps=8,
-    base_seed=1000,
-    **kwargs
-):
+def run_replications(n_reps=8, base_seed=1000, **kwargs):
+    reps = [run_simulation(seed=base_seed + r, **kwargs) for r in range(n_reps)]
+    J = len(reps[0]["beta_sim"])
 
-    reps = [
-        run_simulation(
-            seed=base_seed + r,
-            **kwargs
-        )
-        for r in range(n_reps)
-    ]
+    scalar_keys = ["ebo_depot", "regular_in_transit_avg"]
+    vector_keys = [k for k in reps[0] if k not in scalar_keys]
 
-    J = len(
-        reps[0]["beta_sim"]
-    )
-
-    scalar_keys = [
-        "ebo_depot",
-        "depot_regular_fill_rate_sim",
-        "supplier_order_rate_sim",
-        "depot_regular_request_rate_sim",
-        "depot_backorder_arrival_rate_sim",
-        "depot_wait_sim",
-        "regular_in_transit_area",
-    ]
-
-    vector_keys = [
-        k
-        for k in reps[0]
-        if k not in scalar_keys
-    ]
-
-    output = {
-        k: statistics.mean(
-            r[k]
-            for r in reps
-        )
-        for k in scalar_keys
-    }
-
+    output = {k: statistics.mean(r[k] for r in reps) for k in scalar_keys}
     for k in vector_keys:
+        output[k] = [statistics.mean(r[k][j] for r in reps) for j in range(J)]
 
-        output[k] = [
-            statistics.mean(
-                r[k][j]
-                for r in reps
-            )
-            for j in range(J)
-        ]
-
-    # 95% confidence interval half-width for theta
+    # 95% CI half-width for theta
     output["theta_halfwidth"] = []
-
     for j in range(J):
-
-        values = [
-            r["theta_sim"][j]
-            for r in reps
-        ]
-
-        if len(values) > 1:
-
-            hw = (
-                1.96
-                * statistics.stdev(values)
-                / math.sqrt(len(values))
-            )
-
-        else:
-
-            hw = 0.0
-
+        values = [r["theta_sim"][j] for r in reps]
+        hw = (1.96 * statistics.stdev(values) / math.sqrt(len(values))
+              if len(values) > 1 else 0.0)
         output["theta_halfwidth"].append(hw)
 
     return output
@@ -806,243 +313,69 @@ def run_replications(
 def supervisor_analytical(
     local_base_stock,
     s0,
-    lambda_total,
     lambda_local,
     depot_lead_time,
     local_lead_time,
     other_bases=None,
-    max_iter=200,
+    max_iter=500,
     tol=1e-10,
 ):
     """
-    Analytical independence approximation.
+    Independence approximation:
 
-    theta =
-        P(hub empty)
-        *
-        P(depot available)
+        theta = P(hub empty) * P(depot available)
 
-    The fixed point accounts for:
-
-    - regular demand reaching the depot
-    - emergency depot shipments consuming depot stock
-    - depot waiting time
-    - the effect of depot waiting time on hub stockouts
+    Fixed point over:
+      - total depot withdrawal rate (regular + emergency)
+      - depot waiting time (which lengthens hub replenishment time)
     """
+    all_bases = [{"lambda": lambda_local, "L": local_lead_time, "S": local_base_stock}]
+    all_bases.extend(other_bases or [])
 
-    all_bases = []
-
-    all_bases.append({
-        "lambda": lambda_local,
-        "L": local_lead_time,
-        "S": local_base_stock
-    })
-
-    for base in other_bases or []:
-
-        all_bases.append(base)
-
-    # Initial depot waiting-time estimate
     depot_wait = 0.0
-
-    lambda_depot = lambda_total
-
-    # ========================================================
-    # Fixed-point iteration
-    # ========================================================
+    lambda_depot = sum(b["lambda"] for b in all_bases)
 
     for _ in range(max_iter):
-
-        # ----------------------------------------------------
-        # Depot pipeline
-        # ----------------------------------------------------
-
-        mu_depot = (
-            lambda_depot
-            * depot_lead_time
-        )
-
-        depot_fill_rate = poisson_cdf(
-            s0 - 1,
-            mu_depot
-        )
-
-        depot_ebo = expected_backorders(
-            mu_depot,
-            s0
-        )
-
-        # ----------------------------------------------------
-        # Calculate hub stockout probabilities
-        # ----------------------------------------------------
+        mu_depot = lambda_depot * depot_lead_time
+        depot_fill_rate = poisson_cdf(s0 - 1, mu_depot)
+        depot_ebo = expected_backorders(mu_depot, s0)
 
         regular_rate = 0.0
         emergency_rate = 0.0
-
         for base in all_bases:
+            offered_load = base["lambda"] * (base["L"] + depot_wait)
+            p_empty = erlang_loss(base["S"], offered_load)
+            regular_rate += base["lambda"] * (1.0 - p_empty)
+            emergency_rate += base["lambda"] * p_empty * depot_fill_rate
 
-            offered_load = (
-                base["lambda"]
-                * (
-                    base["L"]
-                    + depot_wait
-                )
-            )
+        new_lambda_depot = regular_rate + emergency_rate
+        regular_backorder_rate = regular_rate * (1.0 - depot_fill_rate)
+        new_depot_wait = (depot_ebo / regular_backorder_rate
+                          if regular_backorder_rate > 0 else 0.0)
 
-            p_empty = erlang_loss(
-                base["S"],
-                offered_load
-            )
-
-            # Local service creates a regular depot request.
-            regular_rate += (
-                base["lambda"]
-                * (1.0 - p_empty)
-            )
-
-            # Hub empty + depot available creates an
-            # emergency shipment from the depot.
-            emergency_rate += (
-                base["lambda"]
-                * p_empty
-                * depot_fill_rate
-            )
-
-        # ----------------------------------------------------
-        # Total depot withdrawal rate
-        # ----------------------------------------------------
-
-        new_lambda_depot = (
-            regular_rate
-            + emergency_rate
-        )
-
-        # ----------------------------------------------------
-        # Regular requests that have to wait at depot
-        # ----------------------------------------------------
-
-        regular_backorder_rate = (
-            regular_rate
-            * (1.0 - depot_fill_rate)
-        )
-
-        if regular_backorder_rate > 0:
-
-            new_depot_wait = (
-                depot_ebo
-                / regular_backorder_rate
-            )
-
-        else:
-
-            new_depot_wait = 0.0
-
-        # ----------------------------------------------------
-        # Convergence
-        # ----------------------------------------------------
-
-        difference = max(
-            abs(
-                new_lambda_depot
-                - lambda_depot
-            ),
-            abs(
-                new_depot_wait
-                - depot_wait
-            )
-        )
-
+        difference = max(abs(new_lambda_depot - lambda_depot),
+                         abs(new_depot_wait - depot_wait))
         lambda_depot = new_lambda_depot
-
         depot_wait = new_depot_wait
-
         if difference < tol:
             break
 
-    # ========================================================
-    # Final depot values
-    # ========================================================
+    mu_depot = lambda_depot * depot_lead_time
+    depot_fill_rate = poisson_cdf(s0 - 1, mu_depot)
+    depot_ebo = expected_backorders(mu_depot, s0)
 
-    mu_depot = (
-        lambda_depot
-        * depot_lead_time
-    )
-
-    depot_fill_rate = poisson_cdf(
-        s0 - 1,
-        mu_depot
-    )
-
-    depot_ebo = expected_backorders(
-        mu_depot,
-        s0
-    )
-
-    # ========================================================
-    # Target hub
-    # ========================================================
-
-    offered_load = (
-        lambda_local
-        * (
-            local_lead_time
-            + depot_wait
-        )
-    )
-
-    p_hub_empty = erlang_loss(
-        local_base_stock,
-        offered_load
-    )
-
-    hub_fill_rate = (
-        1.0
-        - p_hub_empty
-    )
-
-    # ========================================================
-    # Independence approximation
-    # ========================================================
-
-    theta_analytical = (
-        p_hub_empty
-        * depot_fill_rate
-    )
+    offered_load = lambda_local * (local_lead_time + depot_wait)
+    p_hub_empty = erlang_loss(local_base_stock, offered_load)
 
     return {
-
-        "lambda_depot":
-            lambda_depot,
-
-        "depot_fill_rate":
-            depot_fill_rate,
-
-        "depot_ebo":
-            depot_ebo,
-
-        "depot_wait":
-            depot_wait,
-
-        "offered_load":
-            offered_load,
-
-        "p_hub_empty":
-            p_hub_empty,
-
-        "hub_fill_rate":
-            hub_fill_rate,
-
-        "theta_analytical":
-            theta_analytical,
-
-        "regular_rate_target":
-            lambda_local
-            * (1.0 - p_hub_empty),
-
-        "emergency_rate_target":
-            lambda_local
-            * p_hub_empty
-            * depot_fill_rate
+        "lambda_depot": lambda_depot,
+        "depot_fill_rate": depot_fill_rate,
+        "depot_ebo": depot_ebo,
+        "depot_wait": depot_wait,
+        "offered_load": offered_load,
+        "p_hub_empty": p_hub_empty,
+        "hub_fill_rate": 1.0 - p_hub_empty,
+        "theta_analytical": p_hub_empty * depot_fill_rate,
     }
 
 
@@ -1050,363 +383,98 @@ def supervisor_analytical(
 # Comparison
 # ============================================================
 
-def compare_simulation_with_supervisor(
-    local_base_stock=2,
-    hub=2
-):
-
-    # ========================================================
-    # Demand rates
-    # ========================================================
-
-    mean_demand = [
-        LAMBDA_TOTAL * share
-        for share in DEMAND_SHARE
-    ]
-
-    # ========================================================
-    # Hub stock levels
-    # ========================================================
-
-    base_stock = list(
-        DEFAULT_BASE_STOCK
-    )
-
-    base_stock[hub] = local_base_stock
-
-    # ========================================================
-    # Other hubs
-    # ========================================================
+def compare_simulation_with_supervisor(hub=0):
+    mean_demand = [LAMBDA_TOTAL * share for share in DEMAND_SHARE]
+    base_stock = list(DEFAULT_BASE_STOCK)
 
     other_bases = [
-
-        {
-            "lambda":
-                mean_demand[k],
-
-            "L":
-                REGULAR_LEAD_TIME[k],
-
-            "S":
-                base_stock[k]
-        }
-
+        {"lambda": mean_demand[k], "L": REGULAR_LEAD_TIME[k], "S": base_stock[k]}
         for k in range(len(HUB_NAMES))
-
         if k != hub
     ]
 
-    # ========================================================
-    # Simulation parameters
-    # ========================================================
-
     parameters = {
-
-        "mean_demand":
-            mean_demand,
-
-        "lead_time_L":
-            REGULAR_LEAD_TIME,
-
-        "base_stock_s":
-            base_stock,
-
-        "emerg_time":
-            EMERGENCY_LEAD_TIME,
-
-        "lead_time_L0":
-            DEPOT_LEAD_TIME,
-
-        "sim_duration":
-            20_000.0,
-
-        "warmup":
-            2_000.0
+        "mean_demand": mean_demand,
+        "lead_time_L": REGULAR_LEAD_TIME,
+        "base_stock_s": base_stock,
+        "lead_time_L0": DEPOT_LEAD_TIME,
+        "sim_duration": 20_000.0,
+        "warmup": 2_000.0,
     }
 
-    # ========================================================
-    # IMPORTANT:
-    # Lower depot stock levels create enough stockouts
-    # to properly test correlation.
-    #
-    # Mean depot pipeline demand:
-    #
-    #     lambda_total * L0
-    #     = 0.5 * 30
-    #     = 15
-    #
-    # Therefore values around 5-20 are useful for this test.
-    # ========================================================
-
-    s0_values = [
-        5,
-        8,
-        11,
-        14,
-        17,
-        21,
-        26,
-        30
-    ]
+    # Depot pipeline mean is roughly lambda_total * L0 = 15,
+    # so 5-30 covers both heavy and light depot stockouts.
+    s0_values = [5, 8, 11, 14, 17, 21, 26, 30]
 
     width = 190
-
-    print(
-        "\n"
-        + "=" * width
-    )
-
+    print("\n" + "=" * width)
     print(
         f"{HUB_NAMES[hub]}"
         f" | share = {DEMAND_SHARE[hub]:.2%}"
         f" | lambda_j = {mean_demand[hub]:.5f}/day"
         f" | L_j = {REGULAR_LEAD_TIME[hub]:.2f} d"
-        f" | S_j = {local_base_stock}"
+        f" | S_j = {base_stock[hub]}"
         f" | lambda_total = {LAMBDA_TOTAL:.4f}/day"
     )
-
+    print("=" * width)
     print(
-        "=" * width
+        f"{'s0':>4}{'FR dp A':>9}{'FR dp S':>9}{'FR hub A':>10}{'FR hub S':>10}"
+        f"{'P(H=0)':>9}{'P(D>0)':>9}{'Product':>10}{'Joint':>10}{'Prod/Jnt':>10}"
+        f"{'Theta A':>10}{'Theta S':>10}{'Err %':>9}{'Corr %':>9}"
     )
-
-    print(
-        f"{'s0':>4}"
-        f"{'FR dp A':>9}"
-        f"{'FR dp S':>9}"
-        f"{'FR hub A':>10}"
-        f"{'FR hub S':>10}"
-        f"{'P(H=0)':>9}"
-        f"{'P(D>0)':>9}"
-        f"{'Product':>10}"
-        f"{'Joint':>10}"
-        f"{'Prod/Jnt':>10}"
-        f"{'Theta A':>10}"
-        f"{'Theta S':>10}"
-        f"{'Err %':>9}"
-        f"{'Corr %':>9}"
-    )
-
-    print(
-        "-" * width
-    )
-
-    # ========================================================
-    # Depot stock sweep
-    # ========================================================
+    print("-" * width)
 
     for s0 in s0_values:
-
-        # ====================================================
-        # Analytical model
-        # ====================================================
-
+        # Analytical model: SAME hub stock as the simulation
         analytical = supervisor_analytical(
-
-            local_base_stock=
-                local_base_stock,
-
+            local_base_stock=base_stock[hub],
             s0=s0,
-
-            lambda_total=
-                sum(mean_demand),
-
-            lambda_local=
-                mean_demand[hub],
-
-            depot_lead_time=
-                DEPOT_LEAD_TIME,
-
-            local_lead_time=
-                REGULAR_LEAD_TIME[hub],
-
-            other_bases=
-                other_bases
+            lambda_local=mean_demand[hub],
+            depot_lead_time=DEPOT_LEAD_TIME,
+            local_lead_time=REGULAR_LEAD_TIME[hub],
+            other_bases=other_bases,
         )
-
-        # ====================================================
-        # Simulation
-        # ====================================================
 
         simulation = run_replications(
-
             n_reps=8,
-
             base_seed=1000,
-
-            **{
-                **parameters,
-                "base_stock_s0": s0
-            }
+            **{**parameters, "base_stock_s0": s0},
         )
 
-        # ====================================================
-        # Depot fill rate
-        # ====================================================
+        depot_fill_analytical = analytical["depot_fill_rate"]
+        depot_fill_sim = simulation["p_depot_up_time"][0]
 
-        depot_fill_analytical = (
-            analytical[
-                "depot_fill_rate"
-            ]
-        )
+        hub_fill_analytical = analytical["hub_fill_rate"]
+        hub_fill_sim = simulation["beta_sim"][hub]
 
-        depot_fill_sim = (
-            simulation[
-                "p_depot_up_demand"
-            ][hub]
-        )
+        p_hub_empty = simulation["p_hub_empty_demand"][hub]
+        p_depot_up = simulation["p_depot_up_demand"][hub]
+        product = p_hub_empty * p_depot_up
+        joint = simulation["p_joint_demand"][hub]
 
-        # ====================================================
-        # Hub fill rate
-        # ====================================================
+        ratio = product / joint if joint > 0 else float("nan")
 
-        hub_fill_analytical = (
-            analytical[
-                "hub_fill_rate"
-            ]
-        )
+        theta_a = analytical["theta_analytical"]
+        theta_s = simulation["theta_sim"][hub]
 
-        hub_fill_sim = (
-            simulation[
-                "beta_sim"
-            ][hub]
-        )
-
-        # ====================================================
-        # Marginal probabilities
-        # ====================================================
-
-        p_hub_empty = (
-            simulation[
-                "p_hub_empty_demand"
-            ][hub]
-        )
-
-        p_depot_up = (
-            simulation[
-                "p_depot_up_demand"
-            ][hub]
-        )
-
-        # ====================================================
-        # Independence approximation using simulation
-        # marginals
-        # ====================================================
-
-        product = (
-            p_hub_empty
-            * p_depot_up
-        )
-
-        # ====================================================
-        # Actual joint probability
-        # ====================================================
-
-        joint = (
-            simulation[
-                "p_joint_demand"
-            ][hub]
-        )
-
-        # ====================================================
-        # Ratio
-        # ====================================================
-
-        if joint > 0:
-
-            ratio = (
-                product
-                / joint
-            )
-
-        else:
-
-            ratio = float("nan")
-
-        # ====================================================
-        # Analytical theta
-        # ====================================================
-
-        theta_a = (
-            analytical[
-                "theta_analytical"
-            ]
-        )
-
-        # ====================================================
-        # Simulated theta
-        # ====================================================
-
-        theta_s = (
-            simulation[
-                "theta_sim"
-            ][hub]
-        )
-
-        # ====================================================
-        # Total approximation error
-        # ====================================================
-
-        if theta_s > 0:
-
-            error_total = (
-                100.0
-                * abs(theta_a - theta_s)
-                / theta_s
-            )
-
-        else:
-
-            error_total = 0.0
-
-        # ====================================================
-        # Pure independence/correlation error
-        # ====================================================
-
-        if joint > 0:
-
-            error_correlation = (
-                100.0
-                * abs(product - joint)
-                / joint
-            )
-
-        else:
-
-            error_correlation = 0.0
-
-        # ====================================================
-        # Print
-        # ====================================================
+        error_total = 100.0 * abs(theta_a - theta_s) / theta_s if theta_s > 0 else 0.0
+        error_corr = 100.0 * abs(product - joint) / joint if joint > 0 else 0.0
 
         print(
-
             f"{s0:>4}"
-
             f"{depot_fill_analytical:>9.4f}"
-
             f"{depot_fill_sim:>9.4f}"
-
             f"{hub_fill_analytical:>10.4f}"
-
             f"{hub_fill_sim:>10.4f}"
-
-            f"{p_hub_empty:>9.4f}"
-
+            f"{p_hub_empty:>9.6f}"
             f"{p_depot_up:>9.4f}"
-
-            f"{product:>10.4f}"
-
-            f"{joint:>10.4f}"
-
+            f"{product:>10.6f}"
+            f"{joint:>10.6f}"
             f"{ratio:>10.3f}"
-
-            f"{theta_a:>10.4f}"
-
-            f"{theta_s:>10.4f}"
-
+            f"{theta_a:>10.6f}"
+            f"{theta_s:>10.6f}"
             f"{error_total:>8.2f}%"
-
-            f"{error_correlation:>8.2f}%"
+            f"{error_corr:>8.2f}%"
         )
 
 
@@ -1415,16 +483,9 @@ def compare_simulation_with_supervisor(
 # ============================================================
 
 if __name__ == "__main__":
+    # hub = 0 -> VUSA, 1 -> UK, 2 -> UAE, 3 -> Virtual hub
+    compare_simulation_with_supervisor(hub=0)
 
-    # hub = 0 -> VUSA
-    # hub = 1 -> UK
-    # hub = 2 -> UAE
-    # hub = 3 -> Virtual hub
-
-    compare_simulation_with_supervisor(
-        local_base_stock=2,
-        hub=2
-    )
 
 
 
